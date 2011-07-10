@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?eclipse-pydev version="1.0"?>
+
+<pydev_project>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Python for repozitory</pydev_property>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 2.6</pydev_property>
+<pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
+<path>/repozitory</path>
+<path>/repozitory/eggs/SQLAlchemy-0.7.1-py2.7-linux-x86_64.egg</path>
+<path>/repozitory/eggs/zope.dublincore-3.8.2-py2.7.egg</path>
+<path>/repozitory/eggs/zope.interface-3.6.4-py2.7-linux-x86_64.egg</path>
+<path>/repozitory/eggs/simplejson-2.1.6-py2.7-linux-x86_64.egg</path>
+<path>/repozitory/eggs/zope.sqlalchemy-0.6.1-py2.7.egg</path>
+<path>/repozitory/eggs/zope.schema-3.8.0-py2.7.egg</path>
+<path>/repozitory/eggs/ZODB3-3.10.3-py2.7-linux-x86_64.egg</path>
+<path>/repozitory/eggs/zope.component-3.10.0-py2.7.egg</path>
+</pydev_pathproperty>
+</pydev_project>
