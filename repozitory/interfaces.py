@@ -11,15 +11,21 @@ class IArchive(Interface):
     def archive(obj, user, comment=None):
         """Add a version to the archive of an object.
 
-        The object does not need to have been in the archive
-        previously.  The object must either implement or be adaptable
-        to IObjectVersion.
+        The object must either implement or be adaptable to IObjectVersion.
+        The object does not need to have been in the archive previously.  
 
         The user parameter is a string containing the user ID or
         user name who committed the object.  The comment is
         a comment the user typed (if any).
 
         Returns the new version number.
+        """
+
+    def history(docid):
+        """Get the history of an object.
+
+        Returns a list of IObjectHistoryRecord.
+        The most recent version is listed first.
         """
 
 
