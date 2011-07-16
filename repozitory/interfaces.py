@@ -44,7 +44,8 @@ class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
     attrs = Attribute(
         """The attributes to store as a JSON-encodeable dictionary.
 
-        May be None.""")
+        May be None.
+        """)
 
     attachments = Attribute(
         """A map of attachments to include.  May be None.
@@ -71,7 +72,27 @@ class IAttachment(Interface):
         "Optional: A MIME type string such as 'text/plain'")
 
     attrs = Attribute(
-        "Optional: attributes to store as a JSON-encodable dictionary.")
+        "Optional: attributes to store as a JSON-encodeable dictionary.")
+
+
+class IObjectHistoryRecord(IObjectVersion):
+    """An historical record of an object version.
+    """
+
+    version_num = Attribute("The version number of the object; starts with 1.")
+
+    current_version = Attribute("The current version number of the object.")
+
+    archive_time = Attribute(
+        """The datetime in UTC when the version was archived.
+
+        May be different from object.modified.  When in doubt, use
+        object.modified rather than archive_time.
+        """)
+
+    user = Attribute("The user who committed the version.")
+
+    comment = Attribute("The comment attached to the version; may be None.")
 
 
 class IContainerIdentity(Interface):

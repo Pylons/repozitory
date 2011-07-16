@@ -1,7 +1,9 @@
 
+from cStringIO import StringIO
 from persistent import Persistent
 from repozitory.interfaces import IArchive
 from repozitory.interfaces import IAttachment
+from repozitory.interfaces import IObjectHistoryRecord
 from repozitory.interfaces import IObjectVersion
 from repozitory.schema import ArchivedAttachment
 from repozitory.schema import ArchivedBlob
@@ -17,9 +19,15 @@ from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm.session import sessionmaker
 from zope.interface import implements
 from zope.sqlalchemy import ZopeTransactionExtension
+import datetime
 import hashlib
+import tempfile
 
-_sessions = {}  # {db_string: SQLAlchemy session}
+_global_session_cache = {}  # {db_string: SQLAlchemy session}
+
+
+def clear_session_cache():
+    _global_session_cache.clear()
 
 
 class EngineParams(Persistent):
@@ -33,6 +41,15 @@ class EngineParams(Persistent):
     def __init__(self, db_string, **kwargs):
         self.db_string = db_string
         self.kwargs = kwargs
+
+
+def unicode_or_none(s):
+    return unicode(s) if s is not None else None
+
+
+def find_class(module, name):
+    m = __import__(module, None, None, ('__doc__',))
+    return getattr(m, name, None)
 
 
 class Archive(Persistent):
@@ -52,15 +69,17 @@ class Archive(Persistent):
         if session is None:
             params = self.engine_params
             db_string = params.db_string
-            session = _sessions.get(db_string)
+            session = _global_session_cache.get(db_string)
             if session is None:
                 engine = create_engine(db_string, **params.kwargs)
                 session = self._create_session(engine)
+                _global_session_cache[db_string] = session
             self._v_session = session
         return session
 
     def _create_session(self, engine):
         Base.metadata.create_all(engine)
+        # Distinguish sessions by thread.
         session = scoped_session(sessionmaker(
             extension=ZopeTransactionExtension()))
         session.configure(bind=engine)
@@ -97,12 +116,13 @@ class Archive(Persistent):
 
         klass = getattr(obj, 'klass', None)
         if klass is None:
-            klass = type(obj)
+            klass = obj.__class__
         class_id = self._prepare_class_id(klass)
 
         arc_state = ArchivedState(
             docid=docid,
             version_num=(prev_version or 0) + 1,
+            archive_time=datetime.datetime.utcnow(),
             class_id=class_id,
             path=unicode(obj.path),
             modified=obj.modified,
@@ -139,6 +159,10 @@ class Archive(Persistent):
         session = self.session
         module = unicode(klass.__module__)
         name = unicode(klass.__name__)
+        actual = find_class(module, name)
+        if actual != klass:
+            raise TypeError("Broken class reference: %s != %s" % (
+                actual, klass))
         cls = (session.query(ArchivedClass)
             .filter_by(module=module, name=name)
             .first())
@@ -151,8 +175,8 @@ class Archive(Persistent):
     def _attach(self, arc_state, name, value):
         """Add a named attachment to an object state."""
         if IAttachment.providedBy(value):
-            content_type = value.content_type
-            attrs = value.attrs
+            content_type = getattr(value, 'content_type', None)
+            attrs = getattr(value, 'attrs', None)
             f = value.file
         else:
             content_type = None
@@ -169,8 +193,7 @@ class Archive(Persistent):
             f.seek(0)
             blob_id = self._prepare_blob_id(f)
 
-        session = self.session
-        att = ArchivedAttachment(
+        a = ArchivedAttachment(
             docid=arc_state.docid,
             version_num=arc_state.version_num,
             name=unicode(name),
@@ -178,7 +201,7 @@ class Archive(Persistent):
             blob_id=blob_id,
             attrs=attrs,
         )
-        session.add(att)
+        arc_state.attachments.append(a)
 
     def _prepare_blob_id(self, f):
         """Upload a blob or reuse an existing blob containing the same data."""
@@ -224,9 +247,10 @@ class Archive(Persistent):
             arc_chunk = ArchivedChunk(
                 blob_id=blob_id,
                 chunk_index=chunk_index,
+                chunk_length=len(data),
                 data=data,
             )
-            session.add(arc_chunk)
+            arc_blob.chunks.append(arc_chunk)
             session.flush()
             chunk_index += 1
 
@@ -234,6 +258,86 @@ class Archive(Persistent):
         session.flush()
         return arc_blob.blob_id
 
+    def history(self, docid):
+        """Get the history of an object.
 
-def unicode_or_none(s):
-    return unicode(s) if s is not None else None
+        Returns a list of objects that provide IObjectHistoryRecord.
+        The most recent version is listed first.
+        """
+        created = (self.session.query(ArchivedObject)
+            .filter_by(docid=docid)
+            .one()).created
+        current_version = (self.session.query(ArchivedCurrent)
+            .filter_by(docid=docid)
+            .one()).version_num
+        rows = (self.session.query(ArchivedState)
+            .filter_by(docid=docid)
+            .order_by(ArchivedState.version_num)
+            .all())
+        return [ObjectHistoryRecord(row, created, current_version)
+            for row in rows]
+
+
+class ObjectHistoryRecord(object):
+    implements(IObjectHistoryRecord)
+
+    _attachments = None
+    _klass = None
+
+    def __init__(self, state, created, current_version):
+        self._state = state
+        self.current_version = current_version
+        self.created = created
+        self.modified = state.modified
+        self.title = state.title
+        self.description = state.description
+        self.docid = state.docid
+        self.path = state.path
+        self.attrs = state.attrs
+        self.version_num = state.version_num
+        self.archive_time = state.archive_time
+        self.user = state.user
+        self.comment = state.comment
+
+    @property
+    def attachments(self):
+        if self._attachments is not None:
+            return self._attachments
+        res = {}
+        for a in self._state.attachments:
+            res[a.name] = AttachmentInfo(a)
+        self._attachments = res
+        return res
+
+    @property
+    def klass(self):
+        res = self._klass
+        if res is None:
+            cls = self._state.class_
+            self._klass = res = find_class(cls.module, cls.name)
+        return res
+
+
+class AttachmentInfo(object):
+    implements(IAttachment)
+
+    _memory_limit = 1048576
+
+    def __init__(self, attachment):
+        self._attachment = attachment
+        self.content_type = attachment.content_type
+        self.attrs = attachment.attrs
+
+    @property
+    def file(self):
+        length = self._attachment.blob.length
+        if length <= self._memory_limit:
+            # The attachment fits in memory.
+            f = StringIO()
+        else:
+            # Write the attachment to a temporary file.
+            f = tempfile.TemporaryFile()
+        for chunk in self._attachment.blob.chunks:
+            f.write(chunk.data)
+        f.seek(0)
+        return f

@@ -1,6 +1,7 @@
 
 from repozitory.jsontype import JSONType
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import deferred
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import Column
 from sqlalchemy.schema import ForeignKey
@@ -35,7 +36,11 @@ class ArchivedClass(Base):
 
 
 class ArchivedState(Base):
-    """The state of an object in a particular version."""
+    """The state of an object in a particular version.
+
+    Also contains info about the version commit: archive_time, user,
+    and comment.
+    """
     implements(IDCDescriptiveProperties)
     __tablename__ = 'archived_state'
     docid = Column(BigInteger, ForeignKey('archived_object.docid'),
@@ -45,14 +50,17 @@ class ArchivedState(Base):
         nullable=False, index=True)
     path = Column(Unicode, nullable=False, index=True)
     modified = Column(DateTime, nullable=False, index=True)
-    user = Column(Unicode, nullable=False)
     title = Column(Unicode, nullable=True)
     description = Column(Unicode, nullable=True)
     attrs = Column(JSONType, nullable=True)
+
+    # archive_time is the time in UTC when the version was archived.
+    archive_time = Column(DateTime, nullable=False)
+    user = Column(Unicode, nullable=False)
     comment = Column(Unicode, nullable=True)
 
     obj = relationship(ArchivedObject)
-    class_ = relationship(ArchivedClass)
+    class_ = relationship(ArchivedClass, lazy='joined')
 
 
 class ArchivedCurrent(Base):
@@ -69,7 +77,7 @@ class ArchivedCurrent(Base):
         {},
     )
 
-    state = relationship(ArchivedState, backref='current')
+    state = relationship(ArchivedState)
 
 
 class ArchivedBlob(Base):
@@ -93,7 +101,8 @@ class ArchivedChunk(Base):
     blob_id = Column(Integer, ForeignKey('archived_blob.blob_id'),
         primary_key=True, nullable=False, index=True)
     chunk_index = Column(Integer, primary_key=True, nullable=False)
-    data = Column(LargeBinary, nullable=False)
+    chunk_length = Column(Integer, nullable=False)
+    data = deferred(Column(LargeBinary, nullable=False))
 
     blob = relationship(ArchivedBlob, backref='chunks',
         order_by=chunk_index)
@@ -119,7 +128,7 @@ class ArchivedAttachment(Base):
     )
 
     state = relationship(ArchivedState, backref='attachments')
-    blob = relationship(ArchivedBlob)
+    blob = relationship(ArchivedBlob, lazy='joined')
 
 
 class ArchivedContainer(Base):
