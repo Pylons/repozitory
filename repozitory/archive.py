@@ -261,7 +261,7 @@ class Archive(Persistent):
     def history(self, docid):
         """Get the history of an object.
 
-        Returns a list of objects that provide IObjectHistoryRecord.
+        Returns a list of IObjectHistoryRecord.
         The most recent version is listed first.
         """
         created = (self.session.query(ArchivedObject)
