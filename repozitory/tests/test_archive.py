@@ -400,6 +400,32 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(a.attrs, None)
         self.assertEqual(len(a.file.read()), 10485760)
 
+    def test_reverted(self):
+        obj = self._make_dummy_object_version()
+        archive = self._make_default()
+        v1 = archive.archive(obj, 'tester', 'I like version control.')
+        self.assertEqual(v1, 1)
+
+        obj.title = 'New Title!'
+        v2 = archive.archive(obj, 'tester', 'I still like version control.')
+        self.assertEqual(v2, 2)
+
+        records = archive.history(obj.docid)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].version_num, 1)
+        self.assertEqual(records[1].version_num, 2)
+        self.assertEqual(records[0].current_version, 2)
+        self.assertEqual(records[1].current_version, 2)
+
+        archive.reverted(obj.docid, 1)
+
+        records = archive.history(obj.docid)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].version_num, 1)
+        self.assertEqual(records[1].version_num, 2)
+        self.assertEqual(records[0].current_version, 1)
+        self.assertEqual(records[1].current_version, 1)
+
 
 from repozitory.interfaces import IObjectVersion
 from zope.interface import implements

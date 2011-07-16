@@ -28,6 +28,9 @@ class IArchive(Interface):
         The most recent version is listed first.
         """
 
+    def reverted(docid, version_num):
+        """Tell the database that an object has been reverted."""
+
 
 class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
     """The content of an object for version control.

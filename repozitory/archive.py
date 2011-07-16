@@ -277,6 +277,13 @@ class Archive(Persistent):
         return [ObjectHistoryRecord(row, created, current_version)
             for row in rows]
 
+    def reverted(self, docid, version_num):
+        """Tell the database that an object has been reverted."""
+        session = self.session
+        row = session.query(ArchivedCurrent).filter_by(docid=docid).one()
+        row.version_num = version_num
+        session.flush()
+
 
 class ObjectHistoryRecord(object):
     implements(IObjectHistoryRecord)
