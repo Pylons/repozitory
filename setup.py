@@ -28,6 +28,8 @@ setup(
         'zope.interface',
         'zope.sqlalchemy',
     ],
+    tests_require=['unittest2'],
+    extras_require={'test': ['unittest2']},
     entry_points="""
     # -*- Entry points: -*-
     """,

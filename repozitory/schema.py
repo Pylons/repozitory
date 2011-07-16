@@ -38,16 +38,18 @@ class ArchivedState(Base):
     """The state of an object in a particular version."""
     implements(IDCDescriptiveProperties)
     __tablename__ = 'archived_state'
-    docid = Column(BigInteger, primary_key=True, nullable=False,
-        ForeignKey('archived_object.docid'))
+    docid = Column(BigInteger, ForeignKey('archived_object.docid'),
+        primary_key=True, nullable=False)
     version_num = Column(Integer, primary_key=True, nullable=False)
-    class_id = Column(Integer, nullable=False,
-        ForeignKey('archived_class.class_id'), index=True)
+    class_id = Column(Integer, ForeignKey('archived_class.class_id'),
+        nullable=False, index=True)
     path = Column(Unicode, nullable=False, index=True)
     modified = Column(DateTime, nullable=False, index=True)
+    user = Column(Unicode, nullable=False)
     title = Column(Unicode, nullable=True)
     description = Column(Unicode, nullable=True)
     attrs = Column(JSONType, nullable=True)
+    comment = Column(Unicode, nullable=True)
 
     obj = relationship(ArchivedObject)
     class_ = relationship(ArchivedClass)
@@ -70,13 +72,6 @@ class ArchivedCurrent(Base):
     state = relationship(ArchivedState, backref='current')
 
 
-class ArchivedChunk(Base):
-    """A chunk of some blob data."""
-    __tablename__ = 'archived_chunk'
-    chunk_id = Column(BigInteger, primary_key=True, nullable=False)
-    data = Column(LargeBinary, nullable=False)
-
-
 class ArchivedBlob(Base):
     """A reference to chunked blob data.
 
@@ -84,27 +79,24 @@ class ArchivedBlob(Base):
     to save space in the database.
     """
     __tablename__ = 'archived_blob'
-    blob_id = Column(BigInteger, primary_key=True, nullable=False)
+    blob_id = Column(Integer, primary_key=True, nullable=False)
     chunk_count = Column(Integer, nullable=False)
     length = Column(BigInteger, nullable=False)
+    # Blobs are matched by both MD5 and SHA-256.
     md5 = Column(String, nullable=False, index=True)
     sha256 = Column(String, nullable=False)
 
-    chunk = relationship(ArchivedChunk)
 
+class ArchivedChunk(Base):
+    """A chunk of some blob data."""
+    __tablename__ = 'archived_chunk'
+    blob_id = Column(Integer, ForeignKey('archived_blob.blob_id'),
+        primary_key=True, nullable=False, index=True)
+    chunk_index = Column(Integer, primary_key=True, nullable=False)
+    data = Column(LargeBinary, nullable=False)
 
-class ArchivedBlobPart(Base):
-    """A chunk attached to a blob."""
-    __tablename__ = 'archived_blob_part'
-    blob_id = Column(BigInteger, primary_key=True, nullable=False,
-        ForeignKey('archived_blob.blob_id'), index=True)
-    chunk_num = Column(Integer, primary_key=True, nullable=False)
-    chunk_id = Column(BigInteger, nullable=True,
-        ForeignKey('archived_chunk.chunk_id'))
-
-    blob = relationship(ArchivedBlob, backref='chunk_list',
-        order_by=chunk_num)
-    chunk = relationship(ArchivedChunk)
+    blob = relationship(ArchivedBlob, backref='chunks',
+        order_by=chunk_index)
 
 
 class ArchivedAttachment(Base):
@@ -114,8 +106,8 @@ class ArchivedAttachment(Base):
     version_num = Column(Integer, primary_key=True, nullable=False)
     name = Column(Unicode, primary_key=True, nullable=False)
     content_type = Column(String, nullable=True)
-    blob_id = Column(BigInteger, nullable=True,
-        ForeignKey('archived_blob.blob_id'))
+    blob_id = Column(Integer, ForeignKey('archived_blob.blob_id'),
+        nullable=True)
     attrs = Column(JSONType, nullable=True)
 
     __table_args__ = (
@@ -139,8 +131,8 @@ class ArchivedContainer(Base):
     container_id = Column(BigInteger, primary_key=True, nullable=False,
         autoincrement=False)
     path = Column(Unicode, nullable=False, index=True)
-    class_id = Column(Integer, nullable=False,
-        ForeignKey('archived_class.class_id'), index=True)
+    class_id = Column(Integer, ForeignKey('archived_class.class_id'),
+        nullable=False, index=True)
 
     class_ = relationship(ArchivedClass)
 
@@ -148,11 +140,12 @@ class ArchivedContainer(Base):
 class ArchivedContainerItem(Base):
     """A version controlled object in a container."""
     __tablename__ = 'archived_container_item'
-    container_id = Column(BigInteger, primary_key=True, nullable=False,
-        ForeignKey('archived_container.container_id'))
+    container_id = Column(BigInteger,
+        ForeignKey('archived_container.container_id'),
+        primary_key=True, nullable=False)
     name = Column(Unicode, primary_key=True, nullable=False)
-    docid = Column(BigInteger, nullable=False,
-        ForeignKey('archived_object.docid'), index=True)
+    docid = Column(BigInteger, ForeignKey('archived_object.docid'),
+        nullable=False, index=True)
     deleted = Column(Boolean, nullable=False)
 
     container = relationship(ArchivedContainer, backref='items')
