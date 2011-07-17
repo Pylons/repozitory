@@ -50,15 +50,11 @@ except ImportError:
 class IArchive(Interface):
     """A utility that archives objects."""
 
-    def archive(obj, user, comment=None):
+    def archive(obj):
         """Add a version to the archive of an object.
 
         The object must either implement or be adaptable to IObjectVersion.
         The object does not need to have been in the archive previously.  
-
-        The user parameter is a string containing the user ID or
-        user name who committed the object.  The comment is
-        a comment the user typed (if any).
 
         Returns the new version number.
         """
@@ -109,8 +105,13 @@ class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
     klass = Attribute(
         """Optional: the class of the object.
 
-        To detect the class automatically, do not provide this attribute.
+        To detect the class automatically, do not provide this attribute
+        or set it to None.
         """)
+
+    user = Attribute("The user who made the change.")
+
+    comment = Attribute("The comment attached to the version; may be None.")
 
 
 class IAttachment(Interface):
@@ -140,10 +141,6 @@ class IObjectHistoryRecord(IObjectVersion):
         May be different from object.modified.  When in doubt, use
         object.modified rather than archive_time.
         """)
-
-    user = Attribute("The user who committed the version.")
-
-    comment = Attribute("The comment attached to the version; may be None.")
 
 
 class IContainerIdentity(Interface):

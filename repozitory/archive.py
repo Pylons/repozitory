@@ -85,12 +85,12 @@ class Archive(Persistent):
         session.configure(bind=engine)
         return session
 
-    def archive(self, obj, user, comment=None):
+    def archive(self, obj):
         """Add a version to the archive of an object.
 
         The object does not need to have been in the archive
         previously.  The object must either implement or be adaptable
-        to IObjectIdentity and IObjectContent.
+        to IObjectVersion.
 
         Returns the new version number.
         """
@@ -126,11 +126,11 @@ class Archive(Persistent):
             class_id=class_id,
             path=unicode(obj.path),
             modified=obj.modified,
-            user=unicode(user),
+            user=unicode(obj.user),
             title=unicode_or_none(obj.title),
             description=unicode_or_none(obj.description),
             attrs=obj.attrs,
-            comment=unicode_or_none(comment),
+            comment=unicode_or_none(obj.comment),
         )
         session.add(arc_state)
 

@@ -64,7 +64,7 @@ class ArchiveTest(unittest.TestCase):
     def test_archive_simple_object(self):
         obj = self._make_dummy_object_version()
         archive = self._make_default()
-        ver = archive.archive(obj, 'tester', 'I like version control.')
+        ver = archive.archive(obj)
         self.assertEqual(ver, 1)
 
         from repozitory.schema import ArchivedObject
@@ -120,11 +120,12 @@ class ArchiveTest(unittest.TestCase):
     def test_archive_2_revisions_of_simple_object(self):
         obj = self._make_dummy_object_version()
         archive = self._make_default()
-        v1 = archive.archive(obj, 'tester', 'I like version control.')
+        v1 = archive.archive(obj)
         self.assertEqual(v1, 1)
 
         obj.title = 'New Title!'
-        v2 = archive.archive(obj, 'tester', 'I still like version control.')
+        obj.comment = 'I still like version control.'
+        v2 = archive.archive(obj)
         self.assertEqual(v2, 2)
 
         from repozitory.schema import ArchivedObject
@@ -171,7 +172,7 @@ class ArchiveTest(unittest.TestCase):
         obj = self._make_dummy_object_version()
         obj.attachments = {'readme.txt': StringIO('42')}
         archive = self._make_default()
-        archive.archive(obj, 'tester')
+        archive.archive(obj)
 
         from repozitory.schema import ArchivedBlob
         rows = archive.session.query(ArchivedBlob).all()
@@ -211,7 +212,7 @@ class ArchiveTest(unittest.TestCase):
         obj = self._make_dummy_object_version()
         obj.attachments = {'readme.txt': DummyAttachment()}
         archive = self._make_default()
-        archive.archive(obj, 'tester')
+        archive.archive(obj)
 
         from repozitory.schema import ArchivedAttachment
         rows = archive.session.query(ArchivedAttachment).all()
@@ -231,7 +232,7 @@ class ArchiveTest(unittest.TestCase):
         obj = self._make_dummy_object_version()
         obj.attachments = {'readme.txt': f.name}
         archive = self._make_default()
-        archive.archive(obj, 'tester')
+        archive.archive(obj)
 
         from repozitory.schema import ArchivedChunk
         rows = archive.session.query(ArchivedChunk).all()
@@ -252,9 +253,9 @@ class ArchiveTest(unittest.TestCase):
         obj = self._make_dummy_object_version()
         obj.attachments = {'readme.txt': StringIO('42')}
         archive = self._make_default()
-        archive.archive(obj, 'tester')
+        archive.archive(obj)
         obj.attachments['readme2.txt'] = StringIO('24.')
-        archive.archive(obj, 'tester')
+        archive.archive(obj)
 
         from repozitory.schema import ArchivedBlob
         rows = (archive.session.query(ArchivedBlob)
@@ -299,16 +300,19 @@ class ArchiveTest(unittest.TestCase):
     def test_archive_object_that_fails_to_adapt_to_IObjectVersion(self):
         archive = self._make_default()
         with self.assertRaises(TypeError):
-            archive.archive(object(), 'tester')
+            archive.archive(object())
 
     def test_history_without_attachments(self):
         obj = self._make_dummy_object_version()
+        obj.comment = 'change 1'
         archive = self._make_default()
-        archive.archive(obj, 'tester', 'change 1')
+        archive.archive(obj)
         obj.title = 'Changed Title'
         obj.description = 'New Description'
         obj.modified = datetime.datetime(2011, 4, 11)
-        archive.archive(obj, 'mixer upper')
+        obj.user = 'mixer upper'
+        obj.comment = None
+        archive.archive(obj)
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 2)
@@ -355,9 +359,9 @@ class ArchiveTest(unittest.TestCase):
 
         obj = self._make_dummy_object_version()
         archive = self._make_default()
-        archive.archive(obj, 'tester', 'change 1')
+        archive.archive(obj)
         obj.attachments = {'x': DummyAttachment()}
-        archive.archive(obj, 'mixer upper')
+        archive.archive(obj)
 
         from repozitory.schema import ArchivedChunk
         rows = archive.session.query(ArchivedChunk).all()
@@ -386,7 +390,7 @@ class ArchiveTest(unittest.TestCase):
         archive = self._make_default()
         obj = self._make_dummy_object_version()
         obj.attachments = {'x': DummyAttachment()}
-        archive.archive(obj, 'tester')
+        archive.archive(obj)
 
         from repozitory.schema import ArchivedChunk
         rows = archive.session.query(ArchivedChunk).all()
@@ -403,11 +407,11 @@ class ArchiveTest(unittest.TestCase):
     def test_reverted(self):
         obj = self._make_dummy_object_version()
         archive = self._make_default()
-        v1 = archive.archive(obj, 'tester', 'I like version control.')
+        v1 = archive.archive(obj)
         self.assertEqual(v1, 1)
 
         obj.title = 'New Title!'
-        v2 = archive.archive(obj, 'tester', 'I still like version control.')
+        v2 = archive.archive(obj)
         self.assertEqual(v2, 2)
 
         records = archive.history(obj.docid)
@@ -439,3 +443,6 @@ class DummyObjectVersion(object):
     title = 'Cool Object'
     description = None
     attrs = {'a': 1, 'b': [2]}
+    user = 'tester'
+    comment = 'I like version control.'
+
