@@ -13,8 +13,6 @@ from sqlalchemy.types import Integer
 from sqlalchemy.types import LargeBinary
 from sqlalchemy.types import String
 from sqlalchemy.types import Unicode
-from zope.dublincore.interfaces import IDCDescriptiveProperties
-from zope.interface import implements
 
 Base = declarative_base()
 
@@ -41,7 +39,6 @@ class ArchivedState(Base):
     Also contains info about the version commit: archive_time, user,
     and comment.
     """
-    implements(IDCDescriptiveProperties)
     __tablename__ = 'archived_state'
     docid = Column(BigInteger, ForeignKey('archived_object.docid'),
         primary_key=True, nullable=False)

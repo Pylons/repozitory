@@ -1,8 +1,50 @@
 
-from zope.dublincore.interfaces import IDCDescriptiveProperties
 from zope.interface import Attribute
 from zope.interface import Interface
-from zope.dublincore.interfaces import IDCTimes
+
+try:
+    from zope.dublincore.interfaces import IDCDescriptiveProperties
+    from zope.dublincore.interfaces import IDCTimes
+except ImportError:    
+    # We don't really need to depend on the bulky zope.dublincore
+    # package.  Here is a copy of the interfaces we are interested in.
+    from zope.schema import Datetime
+    from zope.schema import Text
+    from zope.schema import TextLine
+
+    class IDCDescriptiveProperties(Interface):
+        """Basic descriptive meta-data properties
+        """
+    
+        title = TextLine(
+            title = u'Title',
+            description =
+            u"The first unqualified Dublin Core 'Title' element value."
+            )
+    
+        description = Text(
+            title = u'Description',
+            description =
+            u"The first unqualified Dublin Core 'Description' element value.",
+            )
+    
+    class IDCTimes(Interface):
+        """Time properties
+        """
+    
+        created = Datetime(
+            title = u'Creation Date',
+            description =
+            u"The date and time that an object is created. "
+            u"\nThis is normally set automatically."
+            )
+    
+        modified = Datetime(
+            title = u'Modification Date',
+            description =
+            u"The date and time that the object was last modified in a\n"
+            u"meaningful way."
+            )
 
 
 class IArchive(Interface):
