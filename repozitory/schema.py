@@ -42,19 +42,21 @@ class ArchivedState(Base):
     __tablename__ = 'archived_state'
     docid = Column(BigInteger, ForeignKey('archived_object.docid'),
         primary_key=True, nullable=False)
-    version_num = Column(Integer, primary_key=True, nullable=False)
+    version_num = Column(Integer, primary_key=True, nullable=False,
+        autoincrement=False)
     class_id = Column(Integer, ForeignKey('archived_class.class_id'),
         nullable=False, index=True)
     path = Column(Unicode, nullable=False, index=True)
     modified = Column(DateTime, nullable=False, index=True)
     title = Column(Unicode, nullable=True)
-    description = Column(Unicode, nullable=True)
-    attrs = Column(JSONType, nullable=True)
 
     # archive_time is the time in UTC when the version was archived.
     archive_time = Column(DateTime, nullable=False)
     user = Column(Unicode, nullable=False)
     comment = Column(Unicode, nullable=True)
+
+    description = Column(Unicode, nullable=True)
+    attrs = Column(JSONType, nullable=True)
 
     obj = relationship(ArchivedObject)
     class_ = relationship(ArchivedClass, lazy='joined')
@@ -97,7 +99,8 @@ class ArchivedChunk(Base):
     __tablename__ = 'archived_chunk'
     blob_id = Column(Integer, ForeignKey('archived_blob.blob_id'),
         primary_key=True, nullable=False, index=True)
-    chunk_index = Column(Integer, primary_key=True, nullable=False)
+    chunk_index = Column(Integer, primary_key=True, nullable=False,
+        autoincrement=False)
     chunk_length = Column(Integer, nullable=False)
     data = deferred(Column(LargeBinary, nullable=False))
 
