@@ -2,7 +2,7 @@
 from zope.interface import Attribute
 from zope.interface import Interface
 
-try:
+try:  # pragma: no cover
     from zope.dublincore.interfaces import IDCDescriptiveProperties
     from zope.dublincore.interfaces import IDCTimes
 except ImportError:    
