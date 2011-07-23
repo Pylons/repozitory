@@ -1,10 +1,9 @@
 
 from cStringIO import StringIO
-from persistent import Persistent
-from repozitory.interfaces import IArchive
-from repozitory.interfaces import IAttachment
-from repozitory.interfaces import IObjectHistoryRecord
-from repozitory.interfaces import IObjectVersion
+from repozitory.abcs import ArchiveInterface
+from repozitory.abcs import Attachment
+from repozitory.abcs import ObjectHistoryRecord
+from repozitory.abcs import ObjectVersion
 from repozitory.schema import ArchivedAttachment
 from repozitory.schema import ArchivedBlob
 from repozitory.schema import ArchivedChunk
@@ -17,7 +16,6 @@ from sqlalchemy import func
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm.session import sessionmaker
-from zope.interface import implements
 from zope.sqlalchemy import ZopeTransactionExtension
 import datetime
 import hashlib
@@ -30,7 +28,7 @@ def clear_session_cache():
     _global_session_cache.clear()
 
 
-class EngineParams(Persistent):
+class EngineParams(object):
     """Parameters to pass to SQLAlchemy's create_engine() call.
 
     db_string is an URL such as postgresql://localhost:5432/ .
@@ -52,11 +50,9 @@ def find_class(module, name):
     return getattr(m, name, None)
 
 
-class Archive(Persistent):
-    """An object archive that uses SQLAlchemy."""
-    implements(IArchive)
+class Archive(ArchiveInterface):
+    """An object archive based on SQLAlchemy."""
 
-    _v_session = None
     chunk_size = 1048576
 
     def __init__(self, engine_params):
@@ -65,16 +61,13 @@ class Archive(Persistent):
     @property
     def session(self):
         """Get the SQLAlchemy session."""
-        session = self._v_session
+        params = self.engine_params
+        db_string = params.db_string
+        session = _global_session_cache.get(db_string)
         if session is None:
-            params = self.engine_params
-            db_string = params.db_string
-            session = _global_session_cache.get(db_string)
-            if session is None:
-                engine = create_engine(db_string, **params.kwargs)
-                session = self._create_session(engine)
-                _global_session_cache[db_string] = session
-            self._v_session = session
+            engine = create_engine(db_string, **params.kwargs)
+            session = self._create_session(engine)
+            _global_session_cache[db_string] = session
         return session
 
     def _create_session(self, engine):
@@ -88,13 +81,12 @@ class Archive(Persistent):
     def archive(self, obj):
         """Add a version to the archive of an object.
 
-        The object does not need to have been in the archive
-        previously.  The object must either implement or be adaptable
-        to IObjectVersion.
+        The object must provide ObjectVersionABC.
 
         Returns the new version number.
         """
-        obj = IObjectVersion(obj)
+        if not isinstance(obj, ObjectVersion):
+            raise TypeError("An ObjectVersion is required.")
 
         docid = obj.docid
         session = self.session
@@ -174,7 +166,7 @@ class Archive(Persistent):
 
     def _attach(self, arc_state, name, value):
         """Add a named attachment to an object state."""
-        if IAttachment.providedBy(value):
+        if isinstance(value, Attachment):
             content_type = getattr(value, 'content_type', None)
             attrs = getattr(value, 'attrs', None)
             f = value.file
@@ -261,7 +253,7 @@ class Archive(Persistent):
     def history(self, docid):
         """Get the history of an object.
 
-        Returns a list of IObjectHistoryRecord.
+        Returns a list of ObjectHistoryRecord.
         The most recent version is listed first.
         """
         created = (self.session.query(ArchivedObject)
@@ -274,7 +266,7 @@ class Archive(Persistent):
             .filter_by(docid=docid)
             .order_by(ArchivedState.version_num)
             .all())
-        return [ObjectHistoryRecord(row, created, current_version)
+        return [ObjectHistoryRecordImpl(row, created, current_version)
             for row in rows]
 
     def reverted(self, docid, version_num):
@@ -285,8 +277,7 @@ class Archive(Persistent):
         session.flush()
 
 
-class ObjectHistoryRecord(object):
-    implements(IObjectHistoryRecord)
+class ObjectHistoryRecordImpl(ObjectHistoryRecord):
 
     _attachments = None
     _klass = None
@@ -305,6 +296,7 @@ class ObjectHistoryRecord(object):
         self.archive_time = state.archive_time
         self.user = state.user
         self.comment = state.comment
+        self.attrs = state.attrs
 
     @property
     def attachments(self):
@@ -312,7 +304,7 @@ class ObjectHistoryRecord(object):
             return self._attachments
         res = {}
         for a in self._state.attachments:
-            res[a.name] = AttachmentInfo(a)
+            res[a.name] = AttachmentImpl(a)
         self._attachments = res
         return res
 
@@ -325,26 +317,25 @@ class ObjectHistoryRecord(object):
         return res
 
 
-class AttachmentInfo(object):
-    implements(IAttachment)
+class AttachmentImpl(Attachment):
 
     _memory_limit = 1048576
 
-    def __init__(self, attachment):
-        self._attachment = attachment
-        self.content_type = attachment.content_type
-        self.attrs = attachment.attrs
+    def __init__(self, row):
+        self._row = row
+        self.content_type = row.content_type
+        self.attrs = row.attrs
 
     @property
     def file(self):
-        length = self._attachment.blob.length
+        length = self._row.blob.length
         if length <= self._memory_limit:
             # The attachment fits in memory.
             f = StringIO()
         else:
             # Write the attachment to a temporary file.
             f = tempfile.TemporaryFile()
-        for chunk in self._attachment.blob.chunks:
+        for chunk in self._row.blob.chunks:
             f.write(chunk.data)
         f.seek(0)
         return f

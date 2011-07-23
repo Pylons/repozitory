@@ -6,11 +6,11 @@ version = '0.1dev'
 setup(
     name='repozitory',
     version=version,
-    description="SQLAlchemy repository for ZODB objects",
+    description="SQLAlchemy repository for Python objects",
     long_description="",
     # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[],
-    keywords='repoze zodb sql sqlalchemy',
+    keywords='repoze sql sqlalchemy',
     author='Shane Hathaway',
     author_email='shane@hathawaymix.org',
     url='http://pypi.python.org/pypi/repozitory',
@@ -22,13 +22,9 @@ setup(
         'psycopg2',
         'simplejson',
         'SQLAlchemy>=0.7.1',
-        'ZODB3',
-        'zope.component',
-        'zope.interface',
-        'zope.schema',
         'zope.sqlalchemy',
     ],
-    tests_require=['unittest2'],
+    tests_require=['unittest2', 'transaction'],
     extras_require={'test': ['unittest2']},
     entry_points="""
     # -*- Entry points: -*-
