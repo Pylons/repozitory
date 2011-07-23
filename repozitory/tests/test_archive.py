@@ -5,10 +5,6 @@ import datetime
 import unittest2 as unittest
 
 
-class DummyContentClass(object):
-    pass
-
-
 class ArchiveTest(unittest.TestCase):
 
     def setUp(self):
@@ -36,22 +32,27 @@ class ArchiveTest(unittest.TestCase):
         return self._make(params)
 
     def _make_dummy_object_version(self):
-        from repozitory.abcs import ObjectVersion
-        
-        class DummyObjectVersion(ObjectVersion):
-            docid = 4
-            path = '/my/object'
-            title = 'Cool Object'
-            description = None
-            created = datetime.datetime(2011, 4, 6)
-            modified = datetime.datetime(2011, 4, 7)
-            attrs = {'a': 1, 'b': [2]}
-            klass = DummyContentClass
-            user = 'tester'
-            comment = 'I like version control.'
-            attachments = None
-        
         return DummyObjectVersion()
+
+    def test_verifyImplements_IArchive(self):
+        from zope.interface.verify import verifyClass
+        from repozitory.interfaces import IArchive
+        verifyClass(IArchive, self._class())
+
+    def test_verifyProvides_IArchive(self):
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IArchive
+        verifyObject(IArchive, self._make_default())
+
+    def test_verifyImplements_IPersistent(self):
+        from zope.interface.verify import verifyClass
+        from persistent.interfaces import IPersistent
+        verifyClass(IPersistent, self._class())
+
+    def test_verifyProvides_IPersistent(self):
+        from zope.interface.verify import verifyObject
+        from persistent.interfaces import IPersistent
+        verifyObject(IPersistent, self._make_default())
 
     def test_query_session_with_empty_database(self):
         from repozitory.schema import ArchivedObject
@@ -76,7 +77,7 @@ class ArchiveTest(unittest.TestCase):
         rows = archive.session.query(ArchivedClass).all()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].module, u'repozitory.tests.test_archive')
-        self.assertEqual(rows[0].name, u'DummyContentClass')
+        self.assertEqual(rows[0].name, u'DummyObjectVersion')
 
         from repozitory.schema import ArchivedState
         rows = archive.session.query(ArchivedState).all()
@@ -137,7 +138,7 @@ class ArchiveTest(unittest.TestCase):
         rows = archive.session.query(ArchivedClass).all()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].module, u'repozitory.tests.test_archive')
-        self.assertEqual(rows[0].name, u'DummyContentClass')
+        self.assertEqual(rows[0].name, u'DummyObjectVersion')
 
         from repozitory.schema import ArchivedState
         rows = (archive.session.query(ArchivedState)
@@ -199,9 +200,11 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[0].attrs, None)
 
     def test_archive_with_complex_attachment(self):
-        from repozitory.abcs import Attachment
+        from zope.interface import implements
+        from repozitory.interfaces import IAttachment
 
-        class DummyAttachment(Attachment):
+        class DummyAttachment(object):
+            implements(IAttachment)
             file = StringIO('42')
             content_type = 'text/plain'
             attrs = {'_MACOSX': {'icon': 'apple-ownz-u'}}
@@ -326,7 +329,7 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[0].user, 'tester')
         self.assertEqual(records[0].comment, 'change 1')
         self.assertFalse(records[0].attachments)
-        self.assertEqual(records[0].klass, DummyContentClass)
+        self.assertEqual(records[0].klass, DummyObjectVersion)
 
         self.assertEqual(records[1].docid, 4)
         self.assertEqual(records[1].path, u'/my/object')
@@ -340,14 +343,16 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[1].user, 'mixer upper')
         self.assertEqual(records[1].comment, None)
         self.assertFalse(records[1].attachments)
-        self.assertEqual(records[1].klass, DummyContentClass)
+        self.assertEqual(records[1].klass, DummyObjectVersion)
 
         self.assertGreater(records[0].archive_time, records[0].created)
 
     def test_history_with_small_attachment(self):
-        from repozitory.abcs import Attachment
+        from zope.interface import implements
+        from repozitory.interfaces import IAttachment
 
-        class DummyAttachment(Attachment):
+        class DummyAttachment(object):
+            implements(IAttachment)
             file = StringIO('42')
             content_type = 'text/plain'
             attrs = {'_MACOSX': {'icon': 'apple-ownz-u'}}
@@ -374,12 +379,13 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(a.file.read(), '42')
 
     def test_history_with_large_attachment(self):
-        from repozitory.abcs import Attachment
+        from zope.interface import implements
+        from repozitory.interfaces import IAttachment
 
-        class DummyAttachment(Attachment):
+        class DummyAttachment(object):
+            implements(IAttachment)
             file = StringIO('*' * 10485760)  # 10 MiB
             content_type = 'application/octet-stream'
-            attrs = None
 
         archive = self._make_default()
         obj = self._make_dummy_object_version()
@@ -423,3 +429,20 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[1].version_num, 2)
         self.assertEqual(records[0].current_version, 1)
         self.assertEqual(records[1].current_version, 1)
+
+
+from repozitory.interfaces import IObjectVersion
+from zope.interface import implements
+
+class DummyObjectVersion(object):
+    implements(IObjectVersion)
+    docid = 4
+    path = '/my/object'
+    created = datetime.datetime(2011, 4, 6)
+    modified = datetime.datetime(2011, 4, 7)
+    title = 'Cool Object'
+    description = None
+    attrs = {'a': 1, 'b': [2]}
+    user = 'tester'
+    comment = 'I like version control.'
+
