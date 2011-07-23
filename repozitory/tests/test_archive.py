@@ -10,14 +10,14 @@ class ArchiveTest(unittest.TestCase):
     def setUp(self):
         import transaction
         transaction.abort()
-        from repozitory.archive import clear_session_cache
-        clear_session_cache()
+        from repozitory.archive import forget_sessions
+        forget_sessions()
 
     def tearDown(self):
         import transaction
         transaction.abort()
-        from repozitory.archive import clear_session_cache
-        clear_session_cache()
+        from repozitory.archive import forget_sessions
+        forget_sessions()
 
     def _class(self):
         from repozitory.archive import Archive
@@ -43,16 +43,6 @@ class ArchiveTest(unittest.TestCase):
         from zope.interface.verify import verifyObject
         from repozitory.interfaces import IArchive
         verifyObject(IArchive, self._make_default())
-
-    def test_verifyImplements_IPersistent(self):
-        from zope.interface.verify import verifyClass
-        from persistent.interfaces import IPersistent
-        verifyClass(IPersistent, self._class())
-
-    def test_verifyProvides_IPersistent(self):
-        from zope.interface.verify import verifyObject
-        from persistent.interfaces import IPersistent
-        verifyObject(IPersistent, self._make_default())
 
     def test_query_session_with_empty_database(self):
         from repozitory.schema import ArchivedObject

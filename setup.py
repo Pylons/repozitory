@@ -22,8 +22,6 @@ setup(
         'psycopg2',
         'simplejson',
         'SQLAlchemy>=0.7.1',
-        'ZODB3',
-        'zope.component',
         'zope.interface',
         'zope.schema',
         'zope.sqlalchemy',

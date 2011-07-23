@@ -1,6 +1,5 @@
 
 from cStringIO import StringIO
-from persistent import Persistent
 from repozitory.interfaces import IArchive
 from repozitory.interfaces import IAttachment
 from repozitory.interfaces import IObjectHistoryRecord
@@ -23,14 +22,14 @@ import datetime
 import hashlib
 import tempfile
 
-_global_session_cache = {}  # {db_string: SQLAlchemy session}
+_global_sessions = {}  # {db_string: SQLAlchemy session}
 
 
-def clear_session_cache():
-    _global_session_cache.clear()
+def forget_sessions():
+    _global_sessions.clear()
 
 
-class EngineParams(Persistent):
+class EngineParams(object):
     """Parameters to pass to SQLAlchemy's create_engine() call.
 
     db_string is an URL such as postgresql://localhost:5432/ .
@@ -52,11 +51,14 @@ def find_class(module, name):
     return getattr(m, name, None)
 
 
-class Archive(Persistent):
-    """An object archive that uses SQLAlchemy."""
+class Archive(object):
+    """An object archive that uses SQLAlchemy.
+
+    Note: instances of this class may be stored in ZODB, so instances
+    should only hold things that can be pickled.
+    """
     implements(IArchive)
 
-    _v_session = None
     chunk_size = 1048576
 
     def __init__(self, engine_params):
@@ -64,17 +66,14 @@ class Archive(Persistent):
 
     @property
     def session(self):
-        """Get the SQLAlchemy session."""
-        session = self._v_session
+        """Get the SQLAlchemy session.  Uses a global session pool."""
+        params = self.engine_params
+        db_string = params.db_string
+        session = _global_sessions.get(db_string)
         if session is None:
-            params = self.engine_params
-            db_string = params.db_string
-            session = _global_session_cache.get(db_string)
-            if session is None:
-                engine = create_engine(db_string, **params.kwargs)
-                session = self._create_session(engine)
-                _global_session_cache[db_string] = session
-            self._v_session = session
+            engine = create_engine(db_string, **params.kwargs)
+            session = self._create_session(engine)
+            _global_sessions[db_string] = session
         return session
 
     def _create_session(self, engine):
