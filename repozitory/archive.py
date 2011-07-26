@@ -1,14 +1,17 @@
 
 from cStringIO import StringIO
 from repozitory.interfaces import IArchive
-from repozitory.interfaces import IAttachment
+from repozitory.interfaces import IContainerRecord
+from repozitory.interfaces import IDeletedItem
 from repozitory.interfaces import IObjectHistoryRecord
-from repozitory.interfaces import IObjectVersion
-from repozitory.schema import ArchivedAttachment
-from repozitory.schema import ArchivedBlob
+from repozitory.schema import ArchivedBlobInfo
+from repozitory.schema import ArchivedBlobLink
 from repozitory.schema import ArchivedChunk
 from repozitory.schema import ArchivedClass
+from repozitory.schema import ArchivedContainer
 from repozitory.schema import ArchivedCurrent
+from repozitory.schema import ArchivedItem
+from repozitory.schema import ArchivedItemDeleted
 from repozitory.schema import ArchivedObject
 from repozitory.schema import ArchivedState
 from repozitory.schema import Base
@@ -59,7 +62,7 @@ class Archive(object):
     """
     implements(IArchive)
 
-    chunk_size = 1048576
+    chunk_size = 1048576    # Store blobs in chunks of this size
 
     def __init__(self, engine_params):
         self.engine_params = engine_params
@@ -88,16 +91,13 @@ class Archive(object):
         """Add a version to the archive of an object.
 
         The object does not need to have been in the archive
-        previously.  The object must either implement or be adaptable
-        to IObjectVersion.
+        previously.  The object must provide the IObjectVersion interface.
 
         Returns the new version number.
         """
-        obj = IObjectVersion(obj)
-
         docid = obj.docid
         session = self.session
-        prev_version = None
+        max_version = None
         arc_obj = (session.query(ArchivedObject)
             .filter_by(docid=docid)
             .first())
@@ -108,10 +108,19 @@ class Archive(object):
             )
             session.add(arc_obj)
         else:
-            (prev_version,) = (
+            (max_version,) = (
                 session.query(func.max(ArchivedState.version_num))
                 .filter_by(docid=docid)
                 .one())
+
+        arc_current = (
+            session.query(ArchivedCurrent)
+            .filter_by(docid=docid)
+            .first())
+        if arc_current is None:
+            derived_from_version = None
+        else:
+            derived_from_version = arc_current.version_num
 
         klass = getattr(obj, 'klass', None)
         if klass is None:
@@ -120,7 +129,8 @@ class Archive(object):
 
         arc_state = ArchivedState(
             docid=docid,
-            version_num=(prev_version or 0) + 1,
+            version_num=(max_version or 0) + 1,
+            derived_from_version=derived_from_version,
             archive_time=datetime.datetime.utcnow(),
             class_id=class_id,
             path=unicode(obj.path),
@@ -133,10 +143,10 @@ class Archive(object):
         )
         session.add(arc_state)
 
-        attachments = getattr(obj, 'attachments', None)
-        if attachments:
-            for name, value in attachments.items():
-                self._attach(arc_state, name, value)
+        blobs = getattr(obj, 'blobs', None)
+        if blobs:
+            for name, value in blobs.items():
+                self._link_blob(arc_state, name, value)
 
         arc_current = (
             session.query(ArchivedCurrent)
@@ -171,36 +181,27 @@ class Archive(object):
             session.flush()
         return cls.class_id
 
-    def _attach(self, arc_state, name, value):
-        """Add a named attachment to an object state."""
-        if IAttachment.providedBy(value):
-            content_type = getattr(value, 'content_type', None)
-            attrs = getattr(value, 'attrs', None)
-            f = value.file
-        else:
-            content_type = None
-            attrs = None
-            f = value
-        if isinstance(f, basestring):
-            fn = f
+    def _link_blob(self, arc_state, name, value):
+        """Link a named blob to an object state."""
+        if isinstance(value, basestring):
+            fn = value
             f = open(fn, 'rb')
             try:
                 blob_id = self._prepare_blob_id(f)
             finally:
                 f.close()
         else:
+            f = value
             f.seek(0)
             blob_id = self._prepare_blob_id(f)
 
-        a = ArchivedAttachment(
+        a = ArchivedBlobLink(
             docid=arc_state.docid,
             version_num=arc_state.version_num,
             name=unicode(name),
-            content_type=unicode_or_none(content_type),
             blob_id=blob_id,
-            attrs=attrs,
         )
-        arc_state.attachments.append(a)
+        arc_state.blob_links.append(a)
 
     def _prepare_blob_id(self, f):
         """Upload a blob or reuse an existing blob containing the same data."""
@@ -221,13 +222,13 @@ class Archive(object):
 
         session = self.session
         arc_blob = (
-            session.query(ArchivedBlob)
+            session.query(ArchivedBlobInfo)
             .filter_by(length=length, md5=md5, sha256=sha256)
             .first())
         if arc_blob is not None:
             return arc_blob.blob_id
 
-        arc_blob = ArchivedBlob(
+        arc_blob = ArchivedBlobInfo(
             chunk_count=0,
             length=length,
             md5=md5,
@@ -257,7 +258,7 @@ class Archive(object):
         session.flush()
         return arc_blob.blob_id
 
-    def history(self, docid):
+    def history(self, docid, only_current=False):
         """Get the history of an object.
 
         Returns a list of IObjectHistoryRecord.
@@ -269,10 +270,10 @@ class Archive(object):
         current_version = (self.session.query(ArchivedCurrent)
             .filter_by(docid=docid)
             .one()).version_num
-        rows = (self.session.query(ArchivedState)
-            .filter_by(docid=docid)
-            .order_by(ArchivedState.version_num)
-            .all())
+        q = self.session.query(ArchivedState).filter_by(docid=docid)
+        if only_current:
+            q = q.filter_by(version_num=current_version)
+        rows = q.order_by(ArchivedState.version_num).all()
         return [ObjectHistoryRecord(row, created, current_version)
             for row in rows]
 
@@ -283,16 +284,125 @@ class Archive(object):
         row.version_num = version_num
         session.flush()
 
+    def archive_container(self, container, user):
+        """Update the archive of a container.
+
+        The container parameter must provide the IContainerVersion interface.
+        The container does not need to have been in the archive previously.
+
+        Note that this method does not keep a record of container versions.
+        It only records the contents of the container and tracks deletions,
+        to allow for undeletion of contained objects.
+
+        Returns None.
+        """
+        container_id = container.container_id
+        session = self.session
+        now = datetime.datetime.utcnow()
+        arc_container = (session.query(ArchivedContainer)
+            .filter_by(container_id=container_id)
+            .first())
+        path = unicode(container.path)
+        if arc_container is None:
+            arc_container = ArchivedContainer(
+                container_id=container_id,
+                path=path,
+            )
+            session.add(arc_container)
+            item_list = []
+            deleted_list = []
+        else:
+            if arc_container.path != path:
+                arc_container.path = path
+            item_list = (session.query(ArchivedItem)
+                .filter_by(container_id=container_id)
+                .all())
+            deleted_list = (session.query(ArchivedItemDeleted)
+                .filter_by(container_id=container_id)
+                .all())
+
+        old_items = {}  # {(ns, name): ArchivedItem}
+        old_docid_names = {}  # {docid: (ns, name)}
+        for item in item_list:
+            k = (item.namespace, item.name)
+            old_items[k] = item
+            old_docid_names[item.docid] = k
+
+        new_items = {}  # {(ns, name): docid}
+        current_docids = set()
+        if container.map:
+            for name, docid in container.map.items():
+                new_items[(u'', unicode(name))] = docid
+                current_docids.add(docid)
+        if container.ns_map:
+            for ns, m in container.ns_map.items():
+                ns = unicode(ns)
+                for name, docid in m.items():
+                    new_items[(ns, unicode(name))] = docid
+                    current_docids.add(docid)
+
+        for k in set(new_items).difference(old_items):
+            # Add an item to the container.
+            ns, name = k
+            docid = new_items[k]
+            item = ArchivedItem(
+                container_id=container_id,
+                namespace=ns,
+                name=name,
+                docid=docid,
+            )
+            session.add(item)
+
+        for k in set(old_items).difference(new_items):
+            # Remove an item from the container.
+            item = old_items[k]
+            session.delete(item)
+
+        for k in set(old_items).intersection(new_items):
+            item = old_items[k]
+            docid = new_items[k]
+            if item.docid != docid:
+                # An item changed its docid.
+                item.docid = docid
+
+        for row in deleted_list:
+            if row.docid in current_docids:
+                # This item exists, so remove the deletion record.
+                session.delete(row)
+
+        for docid in set(old_docid_names).difference(current_docids):
+            # At least one item has just been deleted.
+            ns, name = old_docid_names[docid]
+            row = ArchivedItemDeleted(
+                container_id=container_id,
+                docid=docid,
+                namespace=ns,
+                name=name,
+                deleted_time=now,
+                deleted_by=unicode(user),
+            )
+            session.add(row)
+
+    def container_contents(self, container_id):
+        """Return the contents of a container as IContainerRecord.
+        """
+        session = self.session
+        row = (session.query(ArchivedContainer)
+            .filter_by(container_id=container_id)
+            .one())
+        return ContainerRecord(self.session, row)
+
 
 class ObjectHistoryRecord(object):
     implements(IObjectHistoryRecord)
 
-    _attachments = None
+    _blobs = None
     _klass = None
 
     def __init__(self, state, created, current_version):
         self._state = state
         self.current_version = current_version
+        self.derived_from_version = state.derived_from_version
         self.created = created
         self.modified = state.modified
         self.title = state.title
@@ -306,14 +416,14 @@ class ObjectHistoryRecord(object):
         self.comment = state.comment
 
     @property
-    def attachments(self):
-        if self._attachments is not None:
-            return self._attachments
-        res = {}
-        for a in self._state.attachments:
-            res[a.name] = AttachmentInfo(a)
-        self._attachments = res
-        return res
+    def blobs(self):
+        blobs = self._blobs
+        if blobs is None:
+            blobs = {}
+            for link in self._state.blob_links:
+                blobs[link.name] = BlobReader(link.blob)
+            self._blobs = blobs
+        return blobs
 
     @property
     def klass(self):
@@ -324,26 +434,78 @@ class ObjectHistoryRecord(object):
         return res
 
 
-class AttachmentInfo(object):
-    implements(IAttachment)
+class BlobReader(object):
+    """Reads a blob file on demand and delegates to the open file."""
 
-    _memory_limit = 1048576
+    _file = None
+    _max_stringio = 1048576  # If blobs are larger than this, use a temp file.
 
-    def __init__(self, attachment):
-        self._attachment = attachment
-        self.content_type = attachment.content_type
-        self.attrs = attachment.attrs
+    def __init__(self, blob):
+        self._blob = blob
 
-    @property
-    def file(self):
-        length = self._attachment.blob.length
-        if length <= self._memory_limit:
-            # The attachment fits in memory.
-            f = StringIO()
-        else:
-            # Write the attachment to a temporary file.
-            f = tempfile.TemporaryFile()
-        for chunk in self._attachment.blob.chunks:
-            f.write(chunk.data)
-        f.seek(0)
+    def _get_file(self):
+        f = self._file
+        if f is None:
+            length = self._blob.length
+            if length <= self._max_stringio:
+                # The blob fits in memory.
+                f = StringIO()
+            else:
+                # Write the blob to a temporary file.
+                f = tempfile.TemporaryFile()
+            for chunk in self._blob.chunks:
+                f.write(chunk.data)
+            f.seek(0)
+            self._file = f
         return f
+
+    def __getattr__(self, name):
+        return getattr(self._get_file(), name)
+
+    def write(self, data):
+        raise IOError("BlobReader is not writable")
+
+    def writelines(self, data):
+        raise IOError("BlobReader is not writable")
+
+
+class ContainerRecord(object):
+    implements(IContainerRecord)
+
+    def __init__(self, session, row):
+        self.container_id = row.container_id
+        self.path = row.path
+
+        self.map = {}
+        self.ns_map = {}
+        item_list = (session.query(ArchivedItem)
+            .filter_by(container_id=self.container_id)
+            .all())
+        for item in item_list:
+            ns = item.namespace
+            name = item.name
+            if ns:
+                m = self.ns_map.get(ns)
+                if m is None:
+                    self.ns_map[ns] = m = {}
+                m[name] = item.docid
+            else:
+                self.map[name] = item.docid
+
+        deleted_list = (session.query(ArchivedItemDeleted)
+            .filter_by(container_id=self.container_id)
+            .order_by(ArchivedItemDeleted.deleted_time.desc(),
+                ArchivedItemDeleted.namespace, ArchivedItemDeleted.name)
+            .all())
+        self.deleted = [DeletedItem(r) for r in deleted_list]
+
+
+class DeletedItem(object):
+    implements(IDeletedItem)
+
+    def __init__(self, row):
+        self.docid = row.docid
+        self.namespace = row.namespace
+        self.name = row.name
+        self.deleted_time = row.deleted_time
+        self.deleted_by = row.deleted_by

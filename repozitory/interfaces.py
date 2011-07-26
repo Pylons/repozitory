@@ -7,38 +7,41 @@ try:  # pragma: no cover
     from zope.dublincore.interfaces import IDCTimes
 except ImportError:    
     # We don't really need to depend on the bulky zope.dublincore
-    # package.  Here is a copy of the interfaces we are interested in.
+    # package if it's not installed.  This is a copy of the interfaces
+    # we are interested in.
     from zope.schema import Datetime
     from zope.schema import Text
     from zope.schema import TextLine
 
+
     class IDCDescriptiveProperties(Interface):
         """Basic descriptive meta-data properties
         """
-    
+
         title = TextLine(
             title = u'Title',
             description =
             u"The first unqualified Dublin Core 'Title' element value."
             )
-    
+
         description = Text(
             title = u'Description',
             description =
             u"The first unqualified Dublin Core 'Description' element value.",
             )
-    
+
+
     class IDCTimes(Interface):
         """Time properties
         """
-    
+
         created = Datetime(
             title = u'Creation Date',
             description =
             u"The date and time that an object is created. "
             u"\nThis is normally set automatically."
             )
-    
+
         modified = Datetime(
             title = u'Modification Date',
             description =
@@ -53,21 +56,44 @@ class IArchive(Interface):
     def archive(obj):
         """Add a version to the archive of an object.
 
-        The object must either implement or be adaptable to IObjectVersion.
+        The obj parameter must provide the IObjectVersion interface.
         The object does not need to have been in the archive previously.  
 
         Returns the new version number.
         """
 
-    def history(docid):
+    def history(docid, only_current=False):
         """Get the history of an object.
 
-        Returns a list of IObjectHistoryRecord.
-        The most recent version is listed first.
+        Returns a list of objects that provide IObjectHistoryRecord.
+        The most recent version number is listed first.
+
+        If only_current is true, only the current history record
+        is returned in the list.  (The most current history record
+        might not be the most recent version number if the object
+        has been reverted.)
         """
 
     def reverted(docid, version_num):
         """Tell the database that an object has been reverted."""
+
+    def archive_container(container, user):
+        """Update the archive of a container.
+
+        The container parameter must provide the IContainerVersion interface.
+        The container does not need to have been in the archive previously.
+        The user parameter (a string) specifies who made the change.
+
+        Note that this method does not keep a record of container versions.
+        It only records the contents of the container and tracks deletions,
+        to allow for undeletion of contained objects.
+
+        Returns None.
+        """
+
+    def container_contents(container_id):
+        """Returns the contents of a container as IContainerRecord.
+        """
 
 
 class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
@@ -75,7 +101,7 @@ class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
 
     Note that the following attributes are required, as specified by
     the base interfaces:
-    
+
         title
         description
         created
@@ -86,7 +112,11 @@ class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
 
     docid = Attribute("The docid of the object as an integer.")
 
-    path = Attribute("The path of the object as a Unicode string.")
+    path = Attribute(
+        """The path of the object as a Unicode string.
+
+        Used only as metadata.  May be left empty.
+        """)
 
     attrs = Attribute(
         """The attributes to store as a JSON-encodeable dictionary.
@@ -94,58 +124,107 @@ class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
         May be None.
         """)
 
-    attachments = Attribute(
-        """A map of attachments to include.  May be None.
+    blobs = Attribute(
+        """A map of binary large objects linked to this state.  May be None.
 
         Each key is a unicode string.  Each value is either a
-        filename, an open file object (such as a StringIO), or an
-        object that provides IAttachment.
+        filename or an open file object (such as a StringIO).
+        Open file objects must be seekable.
         """)
 
     klass = Attribute(
         """Optional: the class of the object.
 
-        To detect the class automatically, do not provide this attribute
+        To detect the class automatically, do not provide this attribute,
         or set it to None.
         """)
 
-    user = Attribute("The user who made the change.")
+    user = Attribute("The user who made the change. (A string)")
 
-    comment = Attribute("The comment attached to the version; may be None.")
-
-
-class IAttachment(Interface):
-    """The metadata and content of a versioned attachment."""
-
-    file = Attribute(
-        "Either a filename or an open file containing the attachment.")
-
-    content_type = Attribute(
-        "Optional: A MIME type string such as 'text/plain'")
-
-    attrs = Attribute(
-        "Optional: attributes to store as a JSON-encodeable dictionary.")
+    comment = Attribute("The comment linked to the version; may be None.")
 
 
 class IObjectHistoryRecord(IObjectVersion):
     """An historical record of an object version.
+
+    The IArchive.history() method returns objects that provide this
+    interface.  All blobs returned by the history() method are open
+    files (not filenames).
     """
 
     version_num = Attribute("The version number of the object; starts with 1.")
+
+    derived_from_version = Attribute(
+        """The version number this version was based on.
+
+        None if the object was created in this version.
+        """)
 
     current_version = Attribute("The current version number of the object.")
 
     archive_time = Attribute(
         """The datetime in UTC when the version was archived.
 
-        May be different from object.modified.  When in doubt, use
-        object.modified rather than archive_time.
+        May be different from the modified attribute.  The modified
+        attribute is set by the application, whereas the archive_time
+        attribute is set by repozitory automatically.
         """)
 
 
-class IContainerIdentity(Interface):
-    """The ID and path of a container for version control."""
+class IContainerVersion(Interface):
+    """The contents of a container for version control."""
 
-    container_id = Attribute("The container_id of the object as an integer.")
+    container_id = Attribute("The ID of the container as an integer.")
 
-    path = Attribute("The path of the object as a Unicode string.")
+    path = Attribute(
+        """The path of the container as a Unicode string.
+
+        Used only as metadata.  May be left empty.
+        """)
+
+    map = Attribute(
+        """The current items in the container, as {name: docid}.
+
+        All names must be non-empty strings and all referenced objects
+        must already exist in the archive.
+        """)
+
+    ns_map = Attribute(
+        """Namespaced container items, as {ns: {name: docid}}.
+
+        All namespaces and names must be non-empty strings and all referenced
+        objects must already exist in the archive.
+        """)
+
+
+class IContainerRecord(IContainerVersion):
+    """Provides the current and deleted contents of a container."""
+
+    deleted = Attribute(
+        """The deleted items in the container as a list of IDeletedItem.
+
+        The most recently deleted items are listed first.
+
+        A item name may appear more than once in the list if it has referred
+        to different docids at different times.  A docid will never appear
+        more than once in the list, since adding an object to a container
+        causes the corresponding docid to be removed from the deleted list
+        for that container.
+        """)
+
+
+class IDeletedItem(Interface):
+    """A record of an item deleted from a container."""
+
+    docid = Attribute("The docid of the deleted object as an integer.")
+
+    namespace = Attribute("""The object's former namespace in the container.
+
+    Empty if the object was not in a namespace.
+    """)
+
+    name = Attribute("The object's former name within the container.")
+
+    deleted_time = Attribute("When the object was deleted (a UTC datetime).")
+
+    deleted_by = Attribute("Who deleted the object (a string).")

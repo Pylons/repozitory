@@ -87,24 +87,28 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[0].docid, 4)
         self.assertEqual(rows[0].version_num, 1)
 
-        from repozitory.schema import ArchivedBlob
-        rows = archive.session.query(ArchivedBlob).all()
+        from repozitory.schema import ArchivedBlobInfo
+        rows = archive.session.query(ArchivedBlobInfo).all()
         self.assertEqual(len(rows), 0)
 
         from repozitory.schema import ArchivedChunk
         rows = archive.session.query(ArchivedChunk).all()
         self.assertEqual(len(rows), 0)
 
-        from repozitory.schema import ArchivedAttachment
-        rows = archive.session.query(ArchivedAttachment).all()
+        from repozitory.schema import ArchivedBlobLink
+        rows = archive.session.query(ArchivedBlobLink).all()
         self.assertEqual(len(rows), 0)
 
         from repozitory.schema import ArchivedContainer
         rows = archive.session.query(ArchivedContainer).all()
         self.assertEqual(len(rows), 0)
 
-        from repozitory.schema import ArchivedContainerItem
-        rows = archive.session.query(ArchivedContainerItem).all()
+        from repozitory.schema import ArchivedItem
+        rows = archive.session.query(ArchivedItem).all()
+        self.assertEqual(len(rows), 0)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
         self.assertEqual(len(rows), 0)
 
     def test_archive_2_revisions_of_simple_object(self):
@@ -158,14 +162,14 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[0].docid, 4)
         self.assertEqual(rows[0].version_num, 2)
 
-    def test_archive_with_simple_attachment(self):
+    def test_archive_with_blob(self):
         obj = self._make_dummy_object_version()
-        obj.attachments = {'readme.txt': StringIO('42')}
+        obj.blobs = {'readme.txt': StringIO('42')}
         archive = self._make_default()
         archive.archive(obj)
 
-        from repozitory.schema import ArchivedBlob
-        rows = archive.session.query(ArchivedBlob).all()
+        from repozitory.schema import ArchivedBlobInfo
+        rows = archive.session.query(ArchivedBlobInfo).all()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].chunk_count, 1)
         self.assertEqual(rows[0].length, 2)
@@ -180,47 +184,21 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[0].chunk_index, 0)
         self.assertEqual(rows[0].data, '42')
 
-        from repozitory.schema import ArchivedAttachment
-        rows = archive.session.query(ArchivedAttachment).all()
+        from repozitory.schema import ArchivedBlobLink
+        rows = archive.session.query(ArchivedBlobLink).all()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].docid, 4)
         self.assertEqual(rows[0].version_num, 1)
         self.assertEqual(rows[0].name, 'readme.txt')
-        self.assertEqual(rows[0].content_type, None)
-        self.assertEqual(rows[0].attrs, None)
 
-    def test_archive_with_complex_attachment(self):
-        from zope.interface import implements
-        from repozitory.interfaces import IAttachment
-
-        class DummyAttachment(object):
-            implements(IAttachment)
-            file = StringIO('42')
-            content_type = 'text/plain'
-            attrs = {'_MACOSX': {'icon': 'apple-ownz-u'}}
-
-        obj = self._make_dummy_object_version()
-        obj.attachments = {'readme.txt': DummyAttachment()}
-        archive = self._make_default()
-        archive.archive(obj)
-
-        from repozitory.schema import ArchivedAttachment
-        rows = archive.session.query(ArchivedAttachment).all()
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].docid, 4)
-        self.assertEqual(rows[0].version_num, 1)
-        self.assertEqual(rows[0].name, 'readme.txt')
-        self.assertEqual(rows[0].content_type, u'text/plain')
-        self.assertEqual(rows[0].attrs, {'_MACOSX': {'icon': 'apple-ownz-u'}})
-
-    def test_archive_with_filename_attachment(self):
+    def test_archive_with_filename_blob(self):
         import tempfile
         f = tempfile.NamedTemporaryFile()
         f.write('42')
         f.flush()
 
         obj = self._make_dummy_object_version()
-        obj.attachments = {'readme.txt': f.name}
+        obj.blobs = {'readme.txt': f.name}
         archive = self._make_default()
         archive.archive(obj)
 
@@ -230,26 +208,24 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[0].chunk_index, 0)
         self.assertEqual(rows[0].data, '42')
 
-        from repozitory.schema import ArchivedAttachment
-        rows = archive.session.query(ArchivedAttachment).all()
+        from repozitory.schema import ArchivedBlobLink
+        rows = archive.session.query(ArchivedBlobLink).all()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].docid, 4)
         self.assertEqual(rows[0].version_num, 1)
         self.assertEqual(rows[0].name, 'readme.txt')
-        self.assertEqual(rows[0].content_type, None)
-        self.assertEqual(rows[0].attrs, None)
 
-    def test_archive_deduplicates_attachments(self):
+    def test_archive_deduplicates_blobs(self):
         obj = self._make_dummy_object_version()
-        obj.attachments = {'readme.txt': StringIO('42')}
+        obj.blobs = {'readme.txt': StringIO('42')}
         archive = self._make_default()
         archive.archive(obj)
-        obj.attachments['readme2.txt'] = StringIO('24.')
+        obj.blobs['readme2.txt'] = StringIO('24.')
         archive.archive(obj)
 
-        from repozitory.schema import ArchivedBlob
-        rows = (archive.session.query(ArchivedBlob)
-            .order_by(ArchivedBlob.length)
+        from repozitory.schema import ArchivedBlobInfo
+        rows = (archive.session.query(ArchivedBlobInfo)
+            .order_by(ArchivedBlobInfo.length)
             .all())
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].length, 2)
@@ -266,9 +242,9 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[1].chunk_index, 0)
         self.assertEqual(rows[1].data, '24.')
 
-        from repozitory.schema import ArchivedAttachment
-        rows = (archive.session.query(ArchivedAttachment)
-            .order_by(ArchivedAttachment.version_num, ArchivedAttachment.name)
+        from repozitory.schema import ArchivedBlobLink
+        rows = (archive.session.query(ArchivedBlobLink)
+            .order_by(ArchivedBlobLink.version_num, ArchivedBlobLink.name)
             .all())
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows[0].docid, 4)
@@ -287,12 +263,32 @@ class ArchiveTest(unittest.TestCase):
         # Row 2 refers to a different blob.
         self.assertNotEqual(rows[0].blob_id, rows[2].blob_id)
 
-    def test_archive_object_that_fails_to_adapt_to_IObjectVersion(self):
+    def test_archive_broken_class(self):
+        class Unpickleable:
+            # Instances of this class should not be stored because the
+            # class can not be resolved through a module and name reference.
+            pass
+
+        obj = self._make_dummy_object_version()
+        obj.klass = Unpickleable
         archive = self._make_default()
         with self.assertRaises(TypeError):
-            archive.archive(object())
+            archive.archive(obj)
 
-    def test_history_without_attachments(self):
+    def test_history_item_implements_IObjectHistoryRecord(self):
+        obj = self._make_dummy_object_version()
+        obj.comment = 'change 1'
+        archive = self._make_default()
+        archive.archive(obj)
+
+        records = archive.history(obj.docid)
+        self.assertEqual(len(records), 1)
+
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IObjectHistoryRecord
+        verifyObject(IObjectHistoryRecord, records[0])
+
+    def test_history_without_blobs(self):
         obj = self._make_dummy_object_version()
         obj.comment = 'change 1'
         archive = self._make_default()
@@ -318,7 +314,7 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[0].attrs, {'a': 1, 'b': [2]})
         self.assertEqual(records[0].user, 'tester')
         self.assertEqual(records[0].comment, 'change 1')
-        self.assertFalse(records[0].attachments)
+        self.assertFalse(records[0].blobs)
         self.assertEqual(records[0].klass, DummyObjectVersion)
 
         self.assertEqual(records[1].docid, 4)
@@ -332,25 +328,16 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[1].attrs, {'a': 1, 'b': [2]})
         self.assertEqual(records[1].user, 'mixer upper')
         self.assertEqual(records[1].comment, None)
-        self.assertFalse(records[1].attachments)
+        self.assertFalse(records[1].blobs)
         self.assertEqual(records[1].klass, DummyObjectVersion)
 
         self.assertGreater(records[0].archive_time, records[0].created)
 
-    def test_history_with_small_attachment(self):
-        from zope.interface import implements
-        from repozitory.interfaces import IAttachment
-
-        class DummyAttachment(object):
-            implements(IAttachment)
-            file = StringIO('42')
-            content_type = 'text/plain'
-            attrs = {'_MACOSX': {'icon': 'apple-ownz-u'}}
-
+    def test_history_with_small_blob(self):
         obj = self._make_dummy_object_version()
         archive = self._make_default()
         archive.archive(obj)
-        obj.attachments = {'x': DummyAttachment()}
+        obj.blobs = {'x': StringIO('42')}
         archive.archive(obj)
 
         from repozitory.schema import ArchivedChunk
@@ -359,27 +346,17 @@ class ArchiveTest(unittest.TestCase):
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 2)
-        self.assertFalse(records[0].attachments)
+        self.assertFalse(records[0].blobs)
 
-        self.assertTrue(records[1].attachments)
-        self.assertEqual(records[1].attachments.keys(), ['x'])
-        a = records[1].attachments['x']
-        self.assertEqual(a.content_type, 'text/plain')
-        self.assertEqual(a.attrs, {'_MACOSX': {'icon': 'apple-ownz-u'}})
-        self.assertEqual(a.file.read(), '42')
+        self.assertTrue(records[1].blobs)
+        self.assertEqual(records[1].blobs.keys(), ['x'])
+        blob = records[1].blobs['x']
+        self.assertEqual(blob.read(), '42')
 
-    def test_history_with_large_attachment(self):
-        from zope.interface import implements
-        from repozitory.interfaces import IAttachment
-
-        class DummyAttachment(object):
-            implements(IAttachment)
-            file = StringIO('*' * 10485760)  # 10 MiB
-            content_type = 'application/octet-stream'
-
+    def test_history_with_large_blob(self):
         archive = self._make_default()
         obj = self._make_dummy_object_version()
-        obj.attachments = {'x': DummyAttachment()}
+        obj.blobs = {'x': StringIO('*' * 10485760)}  # 10 MiB
         archive.archive(obj)
 
         from repozitory.schema import ArchivedChunk
@@ -388,11 +365,9 @@ class ArchiveTest(unittest.TestCase):
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0].attachments.keys(), ['x'])
-        a = records[0].attachments['x']
-        self.assertEqual(a.content_type, 'application/octet-stream')
-        self.assertEqual(a.attrs, None)
-        self.assertEqual(len(a.file.read()), 10485760)
+        self.assertEqual(records[0].blobs.keys(), ['x'])
+        blob = records[0].blobs['x']
+        self.assertEqual(len(blob.read()), 10485760)
 
     def test_reverted(self):
         obj = self._make_dummy_object_version()
@@ -420,12 +395,375 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[0].current_version, 1)
         self.assertEqual(records[1].current_version, 1)
 
+    def test_archive_container_empty(self):
+        archive = self._make_default()
 
-from repozitory.interfaces import IObjectVersion
-from zope.interface import implements
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {}
+            ns_map = {}
 
-class DummyObjectVersion(object):
-    implements(IObjectVersion)
+        archive.archive_container(DummyContainerVersion(), 'testuser')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 0)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 0)
+
+    def test_archive_container_non_empty(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        archive.archive_container(DummyContainerVersion(), 'testuser')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 4)
+        self.assertEqual(rows[1].container_id, 5)
+        self.assertEqual(rows[1].namespace, u'headers')
+        self.assertEqual(rows[1].name, u'b')
+        self.assertEqual(rows[1].docid, 6)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 0)
+
+    def test_archive_container_with_deletion(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        c.ns_map = {}
+        archive.archive_container(c, 'user2')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = archive.session.query(ArchivedItem).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 4)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'headers')
+        self.assertEqual(rows[0].name, u'b')
+        self.assertEqual(rows[0].docid, 6)
+        self.assertEqual(rows[0].deleted_by, 'user2')
+        self.assertTrue(rows[0].deleted_time)
+
+    def test_archive_container_with_undeletion(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        c.ns_map = {}
+        archive.archive_container(c, 'user2')
+        c.ns_map = {'headers': {'z': 6}}
+        archive.archive_container(c, 'user3')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 4)
+        self.assertEqual(rows[1].container_id, 5)
+        self.assertEqual(rows[1].namespace, u'headers')
+        self.assertEqual(rows[1].name, u'z')
+        self.assertEqual(rows[1].docid, 6)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 0)
+
+    def test_archive_container_with_no_change(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        archive.archive_container(c, 'user2')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 4)
+        self.assertEqual(rows[1].container_id, 5)
+        self.assertEqual(rows[1].namespace, u'headers')
+        self.assertEqual(rows[1].name, u'b')
+        self.assertEqual(rows[1].docid, 6)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 0)
+
+    def test_archive_container_with_rename(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        c.map = {'z': 4}
+        archive.archive_container(c, 'user2')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'z')
+        self.assertEqual(rows[0].docid, 4)
+        self.assertEqual(rows[1].container_id, 5)
+        self.assertEqual(rows[1].namespace, u'headers')
+        self.assertEqual(rows[1].name, u'b')
+        self.assertEqual(rows[1].docid, 6)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 0)
+
+
+    def test_archive_container_with_changing_docid(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        c.map = {'a': 6}
+        archive.archive_container(c, 'user2')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/my/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 6)
+        self.assertEqual(rows[1].container_id, 5)
+        self.assertEqual(rows[1].namespace, u'headers')
+        self.assertEqual(rows[1].name, u'b')
+        self.assertEqual(rows[1].docid, 6)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 4)
+        self.assertEqual(rows[0].deleted_by, 'user2')
+        self.assertTrue(rows[0].deleted_time)
+
+    def test_container_contents_empty(self):
+        archive = self._make_default()
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {}
+            ns_map = {}
+
+        archive.archive_container(DummyContainerVersion(), 'testuser')
+
+        r = archive.container_contents(5)
+        self.assertEqual(r.container_id, 5)
+        self.assertEqual(r.path, u'/my/container')
+        self.assertEqual(r.map, {})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(r.deleted, [])
+
+    def test_container_contents_non_empty(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        archive.archive_container(DummyContainerVersion(), 'testuser')
+
+        r = archive.container_contents(5)
+
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IContainerRecord
+        verifyObject(IContainerRecord, r)
+ 
+        self.assertEqual(r.container_id, 5)
+        self.assertEqual(r.path, u'/my/container')
+        self.assertEqual(r.map, {'a': 4})
+        self.assertEqual(r.ns_map, {'headers': {'b': 6}})
+        self.assertEqual(r.deleted, [])
+
+    def test_container_contents_with_deletion(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj6 = self._make_dummy_object_version()
+        obj6.docid = 6
+        archive.archive(obj4)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = {'headers': {'b': 6}}
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        c.ns_map = {}
+        archive.archive_container(c, 'user2')
+
+        r = archive.container_contents(5)
+        self.assertEqual(r.container_id, 5)
+        self.assertEqual(r.path, u'/my/container')
+        self.assertEqual(r.map, {'a': 4})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 1)
+
+        row = r.deleted[0]
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IDeletedItem
+        verifyObject(IDeletedItem, row)
+
+        self.assertEqual(r.deleted[0].docid, 6)
+        self.assertEqual(r.deleted[0].namespace, 'headers')
+        self.assertEqual(r.deleted[0].name, 'b')
+        self.assertEqual(r.deleted[0].deleted_by, 'user2')
+        self.assertTrue(r.deleted[0].deleted_time)
+
+
+class DummyObjectVersion:
     docid = 4
     path = '/my/object'
     created = datetime.datetime(2011, 4, 6)
@@ -435,4 +773,3 @@ class DummyObjectVersion(object):
     attrs = {'a': 1, 'b': [2]}
     user = 'tester'
     comment = 'I like version control.'
-
