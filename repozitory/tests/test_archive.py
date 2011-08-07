@@ -306,28 +306,28 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[0].docid, 4)
         self.assertEqual(records[0].path, u'/my/object')
         self.assertEqual(records[0].created, datetime.datetime(2011, 4, 6))
-        self.assertEqual(records[0].modified, datetime.datetime(2011, 4, 7))
-        self.assertEqual(records[0].version_num, 1)
+        self.assertEqual(records[0].modified, datetime.datetime(2011, 4, 11))
+        self.assertEqual(records[0].version_num, 2)
         self.assertEqual(records[0].current_version, 2)
-        self.assertEqual(records[0].title, u'Cool Object')
-        self.assertEqual(records[0].description, None)
+        self.assertEqual(records[0].title, u'Changed Title')
+        self.assertEqual(records[0].description, u'New Description')
         self.assertEqual(records[0].attrs, {'a': 1, 'b': [2]})
-        self.assertEqual(records[0].user, 'tester')
-        self.assertEqual(records[0].comment, 'change 1')
+        self.assertEqual(records[0].user, 'mixer upper')
+        self.assertEqual(records[0].comment, None)
         self.assertFalse(records[0].blobs)
         self.assertEqual(records[0].klass, DummyObjectVersion)
 
         self.assertEqual(records[1].docid, 4)
         self.assertEqual(records[1].path, u'/my/object')
         self.assertEqual(records[1].created, datetime.datetime(2011, 4, 6))
-        self.assertEqual(records[1].modified, datetime.datetime(2011, 4, 11))
-        self.assertEqual(records[1].version_num, 2)
+        self.assertEqual(records[1].modified, datetime.datetime(2011, 4, 7))
+        self.assertEqual(records[1].version_num, 1)
         self.assertEqual(records[1].current_version, 2)
-        self.assertEqual(records[1].title, u'Changed Title')
-        self.assertEqual(records[1].description, u'New Description')
+        self.assertEqual(records[1].title, u'Cool Object')
+        self.assertEqual(records[1].description, None)
         self.assertEqual(records[1].attrs, {'a': 1, 'b': [2]})
-        self.assertEqual(records[1].user, 'mixer upper')
-        self.assertEqual(records[1].comment, None)
+        self.assertEqual(records[1].user, 'tester')
+        self.assertEqual(records[1].comment, 'change 1')
         self.assertFalse(records[1].blobs)
         self.assertEqual(records[1].klass, DummyObjectVersion)
 
@@ -346,12 +346,13 @@ class ArchiveTest(unittest.TestCase):
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 2)
-        self.assertFalse(records[0].blobs)
 
-        self.assertTrue(records[1].blobs)
-        self.assertEqual(records[1].blobs.keys(), ['x'])
-        blob = records[1].blobs['x']
+        self.assertTrue(records[0].blobs)
+        self.assertEqual(records[0].blobs.keys(), ['x'])
+        blob = records[0].blobs['x']
         self.assertEqual(blob.read(), '42')
+
+        self.assertFalse(records[1].blobs)
 
     def test_history_with_large_blob(self):
         archive = self._make_default()
@@ -381,8 +382,8 @@ class ArchiveTest(unittest.TestCase):
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 2)
-        self.assertEqual(records[0].version_num, 1)
-        self.assertEqual(records[1].version_num, 2)
+        self.assertEqual(records[0].version_num, 2)
+        self.assertEqual(records[1].version_num, 1)
         self.assertEqual(records[0].current_version, 2)
         self.assertEqual(records[1].current_version, 2)
 
@@ -390,8 +391,8 @@ class ArchiveTest(unittest.TestCase):
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 2)
-        self.assertEqual(records[0].version_num, 1)
-        self.assertEqual(records[1].version_num, 2)
+        self.assertEqual(records[0].version_num, 2)
+        self.assertEqual(records[1].version_num, 1)
         self.assertEqual(records[0].current_version, 1)
         self.assertEqual(records[1].current_version, 1)
 

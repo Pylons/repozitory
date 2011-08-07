@@ -10,3 +10,4 @@ lib
 parts
 *.egg-info
 *~
+doc/build

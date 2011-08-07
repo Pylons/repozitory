@@ -273,7 +273,7 @@ class Archive(object):
         q = self.session.query(ArchivedState).filter_by(docid=docid)
         if only_current:
             q = q.filter_by(version_num=current_version)
-        rows = q.order_by(ArchivedState.version_num).all()
+        rows = q.order_by(ArchivedState.version_num.desc()).all()
         return [ObjectHistoryRecord(row, created, current_version)
             for row in rows]
 
