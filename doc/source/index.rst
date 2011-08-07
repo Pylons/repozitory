@@ -17,6 +17,14 @@ Repozitory was built for KARL, an open source online collaboration
 system, but Repozitory is intended to be useful for any Python project
 that stores user-editable documents.
 
+The version control model implemented by Repozitory is designed to be
+simple for end users, so it is nowhere near as elaborate or complete as
+version control systems designed for software developers. In
+Repozitory, each document is versioned independently. The attributes of
+containers are not normally included in Repozitory, but Repozitory
+tracks the contents of containers in order to provide an undelete
+facility.
+
 Rationale
 ---------
 
@@ -49,8 +57,8 @@ that pickles objects, so if your application is based on ZODB, then you
 probably want to store the Archive object as an attribute of some root
 object.
 
-Archiving Documents
-~~~~~~~~~~~~~~~~~~~
+Archiving a document
+~~~~~~~~~~~~~~~~~~~~
 
 To archive a document, applications call the ``archive`` method of the
 Archive, passing an object that provides the :class:`IObjectVersion`
@@ -184,8 +192,8 @@ a web application with a WSGI pipeline, the best way to call
 ``transaction.commit`` is to include a WSGI component such as
 :mod:`repoze.tm2` in your pipeline.
 
-Reading an object's history
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reading a document's history
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``history()`` method of an :class:`Archive` object provides a
 complete list of versions of a particular document. Pass the document's
@@ -242,6 +250,166 @@ An example:
     >>> h[0].current_version
     2
 
+Reverting
+~~~~~~~~~
+
+To revert a document, the application should call the ``history``
+method, select an historical state to revert to, and change the
+corresponding document to match the historical state. This method of
+reverting documents contrasts with an older package called
+:mod:`Products.ZopeVersionControl`, which automatically copies the
+former document state into the application. That kind of automation has
+proven to be problematic and difficult to debug.  The Repozitory way
+is less automated but simpler overall for application authors.
+
+Once the document has been reverted, the application should
+call the ``reverted`` method of the archive, passing the ``docid``
+and the ``version_num`` that the user chose to revert to.  After
+calling ``reverted``, it may be a good idea to call ``archive``
+again immediately, causing the reverted version to appear at the
+top of the version history (but with a new version number).
+
+Continuing the example:
+
+.. doctest::
+
+    >>> h = archive.history(5)
+    >>> len(h)
+    2
+    >>> h[0].title
+    u'The Life of Brian'
+    >>> h[1].title
+    u'The Life of Brain'
+    >>> d.title = h[1].title
+    >>> archive.reverted(5, h[1].version_num)
+    >>> h = archive.history(5, only_current=True)
+    >>> len(h)
+    1
+    >>> h[0].title
+    u'The Life of Brain'
+
+Undeleting
+~~~~~~~~~~
+
+Repozitory provides a per-container undelete (a.k.a. trash) facility.
+To use it, call the ``archive_container`` method after every change to
+a document container (where a document container is a folder, wiki, or
+other place where documents are stored). Pass a ``container`` object,
+which must provide the :class:`IContainerVersion` interface, and a
+``user`` string, which identifies the user who made the change. Objects
+that provide the :class:`IContainerVersion` interface must have the
+following attributes:
+
+- ``container_id``
+    The 32 bit integer ID of the container. Distinct from ``docid``,
+    but it would be wise to avoid a clash between the ``docid`` and
+    ``container_id`` spaces.
+
+- ``path``
+    The location of the container as a Unicode string, such as
+    '/some/path'. May be left blank, but the path improves the
+    convenience of the relational database, so applications should
+    provide it when possible.
+
+- ``map``
+    The current contents of the container as a mapping of document name
+    (a Unicode string) to document ID. May be an empty mapping.
+
+- ``ns_map``
+    Additional contents of the container as a mapping where each key is
+    a namespace (a non-empty Unicode string) and each value is a
+    mapping of document name to document ID. This is useful when the
+    container has multiple document namespaces.  May be an empty mapping.
+
+When you call the ``archive_container`` method, Repozitory will
+detect changes to the container and make records of any
+deletions and undeletions.  Note that ``archive_container`` does not
+keep a history; it only updates the record of the current container
+contents.  If your application needs to keep a history of the container
+itself, use the ``archive`` method and make sure the ``container_id``
+and ``docid`` spaces are compatible.
+
+Continuing the example:
+
+.. testcode::
+
+    class MyContainer(object):
+        def __init__(self, container_id, contents):
+            self.container_id = container_id
+            self.contents = contents
+
+        def __getitem__(self, name):
+            return self.contents[name]
+
+    class MyContainerVersion(object):
+        # Implements IContainerVersion
+        def __init__(self, container):
+            # assert isinstance(container, MyContainer)
+            self.container_id = container.container_id
+            self.path = '/container/%d' % container.container_id
+            self.map = dict((name, doc.docid)
+                for (name, doc) in container.contents.items())
+            self.ns_map = {}
+
+    c = MyContainer(6, {'movie': d})
+    archive.archive_container(MyContainerVersion(c), '123')
+    transaction.commit()
+
+Now let's say the user has deleted the single item from the container.
+The application should record the change using ``archive_container``:
+
+.. testcode::
+
+    del c.contents['movie']
+    archive.archive_container(MyContainerVersion(c), '123')
+    transaction.commit()
+
+The application can use the ``container_contents`` method of the archive
+to get the current state of the container and list the documents deleted
+from the container.  The ``container_contents`` method returns an object
+that provides :class:`IContainerVersion` as well as
+:class:`IContainerRecord`, which provides the ``deleted`` attribute.
+The ``deleted`` attribute is a list of objects that provide
+:class:`IDeletedItem`.
+
+.. doctest::
+
+    >>> cc = archive.container_contents(6)
+    >>> cc.container_id
+    6
+    >>> cc.path
+    u'/container/6'
+    >>> cc.map
+    {}
+    >>> cc.ns_map
+    {}
+    >>> len(cc.deleted)
+    1
+    >>> cc.deleted[0].docid
+    5
+    >>> cc.deleted[0].name
+    u'movie'
+    >>> cc.deleted[0].deleted_by
+    u'123'
+    >>> cc.deleted[0].deleted_time is not None
+    True
+
+At this point, the application can restore the deleted document by
+adding it back to the container. In this example, we already have the
+document as ``d``, but in order to get the document to restore,
+applications normally have to call ``history(docid,
+only_current=True)`` and turn the result into a document object.
+
+.. doctest::
+
+    >>> c.contents['movie'] = d
+    >>> archive.archive_container(MyContainerVersion(c), '123')
+    >>> transaction.commit()
+    >>> cc = archive.container_contents(6)
+    >>> cc.map
+    {u'movie': 5}
+    >>> len(cc.deleted)
+    0
 
 
 Indices and tables
