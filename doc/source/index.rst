@@ -3,39 +3,36 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Repozitory Documentation
-========================
+.. toctree::
+   :maxdepth: 2
 
 Introduction
 ------------
 
-Repozitory is a library for archiving user-edited documents and
-recovering old versions. It is designed to work in tandem with a
-primary document storage mechanism such as ZODB. Repozitory stores the
-document versions in a PostgreSQL or SQLite database using SQLAlchemy.
-Repozitory was built for KARL, an open source online collaboration
-system, but Repozitory is intended to be useful for any Python project
-that stores user-editable documents.
-
-The version control model implemented by Repozitory is designed to be
-simple for end users, so it is nowhere near as elaborate or complete as
-version control systems designed for software developers. In
-Repozitory, each document is versioned independently. The attributes of
-containers are not normally included in Repozitory, but Repozitory
-tracks the contents of containers in order to provide an undelete
-facility.
-
-Rationale
----------
+Repozitory is a library for archiving documents and recovering old
+versions. It is designed to work in tandem with a primary document
+storage mechanism such as ZODB. Repozitory stores the document versions
+in a PostgreSQL or SQLite database using SQLAlchemy. Repozitory was
+built for KARL, an open source online collaboration system, but
+Repozitory is intended to be useful for any Python project that stores
+user-editable documents.
 
 Using Repozitory, an application can support document versioning
 without burdening its own database schema with support for multiple
 document versions. Repozitory provides a stable database schema that
-does not need to change when applications change, allowing other
-applications to read documents using only the relational database.
+rarely needs to change when applications change.
+
+The version control model implemented by Repozitory is designed to be
+simple for end users, so it is not as elaborate as version control
+systems designed for software developers. In Repozitory, each document
+is versioned independently. The attributes of containers are not
+normally included in Repozitory, but Repozitory tracks the contents of
+containers in order to provide an undelete facility.
 
 Usage
 -----
+
+.. py:module:: repozitory.archive
 
 Install Repozitory using Setuptools::
 
@@ -62,8 +59,8 @@ Archiving a document
 
 To archive a document, applications call the ``archive`` method of the
 Archive, passing an object that provides the :class:`IObjectVersion`
-interface.  The :class:`IObjectVersion` interface requires 10
-attributes and allows for 1 optional attribute.
+interface. The :class:`IObjectVersion` interface specifies the
+following attributes.
 
 - ``docid``
     A unique 32 bit integer document identifier.
@@ -106,7 +103,7 @@ attributes and allows for 1 optional attribute.
 
     Repozitory automatically de-deplicates binary streams using MD5 and
     SHA-256 hashes, so even if many versions of a document (or many
-    documents) use the same large image, Repozitory will store only one
+    documents) use a single large image, Repozitory will store only one
     copy of that image, saving storage space.
 
 - ``user``
@@ -119,15 +116,15 @@ attributes and allows for 1 optional attribute.
     May be None.
 
 - ``klass`` (optional)
-    The Python class of the document being stored.  Repozitory will
+    The Python class of the document being stored. Repozitory will
     verify that the class is importable (exists in the scope of some
     module), since importing the class is often useful for recovery
-    purposes.  If this attribute is not provided, Repozitory will
-    try to determine the class automatically.
+    purposes. If this attribute is not provided, Repozitory will try to
+    determine the class automatically.
 
 Repozitory integrates with the :mod:`transaction` package, so the results
-of calling ``archive()`` will not be committed until you call
-``transaction.commit()``. Here is an example of how applications might
+of calling ``archive`` will not be committed until you call
+``transaction.commit``. Here is an example of how applications might
 use the ``archive`` method.
 
 .. testcode::
@@ -195,10 +192,10 @@ a web application with a WSGI pipeline, the best way to call
 Reading a document's history
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``history()`` method of an :class:`Archive` object provides a
+The ``history`` method of an :class:`Archive` object provides a
 complete list of versions of a particular document. Pass the document's
 ``docid``. If you want only the current version of the document, add
-the parameter ``only_current=True``. The ``history()`` method returns
+the parameter ``only_current=True``. The ``history`` method returns
 the most recent version first.
 
 Each item in the history list provides the :class:`IObjectVersion`
@@ -210,7 +207,7 @@ The attributes provided by :class:`IObjectHistoryRecord` are:
 
 - ``version_num``
     The version number of the document; starts with 1 and increases
-    automatically each time ``archive()`` is called.
+    automatically each time the ``archive`` method is called.
 
 - ``derived_from_version``
     The version number this version was based on.  Set to None
@@ -230,7 +227,7 @@ The attributes provided by :class:`IObjectHistoryRecord` are:
     application, so it may be different from the ``modified``
     value.
 
-An example:
+The following example shows how to read a document's history.
 
 .. doctest::
 
@@ -255,12 +252,7 @@ Reverting
 
 To revert a document, the application should call the ``history``
 method, select an historical state to revert to, and change the
-corresponding document to match the historical state. This method of
-reverting documents contrasts with an older package called
-:mod:`Products.ZopeVersionControl`, which automatically copies the
-former document state into the application. That kind of automation has
-proven to be problematic and difficult to debug.  The Repozitory way
-is less automated but simpler overall for application authors.
+corresponding document to match the historical state.
 
 Once the document has been reverted, the application should
 call the ``reverted`` method of the archive, passing the ``docid``
@@ -327,7 +319,7 @@ deletions and undeletions.  Note that ``archive_container`` does not
 keep a history; it only updates the record of the current container
 contents.  If your application needs to keep a history of the container
 itself, use the ``archive`` method and make sure the ``container_id``
-and ``docid`` spaces are compatible.
+and ``docid`` spaces do not clash.
 
 Continuing the example:
 
@@ -411,9 +403,74 @@ only_current=True)`` and turn the result into a document object.
     >>> len(cc.deleted)
     0
 
+As shown in the example, Repozitory removes restored documents from
+the deleted list.
+
+Interface Documentation
+-----------------------
+
+.. py:module:: repozitory.interfaces
+
+IArchive
+~~~~~~~~
+
+.. autointerface:: repozitory.interfaces.IArchive
+    :members:
+
+
+IObjectVersion
+~~~~~~~~~~~~~~
+
+.. autointerface:: repozitory.interfaces.IObjectVersion
+    :members:
+
+IObjectHistoryRecord
+~~~~~~~~~~~~~~~~~~~~
+
+.. autointerface:: repozitory.interfaces.IObjectHistoryRecord
+    :members:
+
+IContainerVersion
+~~~~~~~~~~~~~~~~~
+
+.. autointerface:: repozitory.interfaces.IContainerVersion
+    :members:
+
+IContainerRecord
+~~~~~~~~~~~~~~~~
+
+.. autointerface:: repozitory.interfaces.IContainerRecord
+    :members:
+
+IDeletedItem
+~~~~~~~~~~~~
+
+.. autointerface:: repozitory.interfaces.IDeletedItem
+    :members:
+
+Comparison with ZopeVersionControl
+----------------------------------
+
+Repozitory and the older ZopeVersionControl product perform a similar
+function but do it differently. Both serve as an archive of document
+versions, but ZopeVersionControl performs its work by copying complete
+ZODB objects to and from a ZODB-based archive, while Repozitory expects
+the application to translate data when copying data to and from the
+archive.
+
+ZopeVersionControl was designed to minimize the amount of code required
+to integrate version control into an existing ZODB application, but in
+practice, it turned out that debugging applications that use
+ZopeVersionControl is often painful. Applications failed to correctly
+distinguish between leaf objects and objects with branches, causing
+ZopeVersionControl to either version too many objects or not enough.
+
+Repozitory is less ambitious. Repozitory requires more integration code
+than ZopeVersionControl requires, but the integration code is likely to
+be more straightforward and easier to debug.
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`

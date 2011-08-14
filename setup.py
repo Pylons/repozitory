@@ -1,19 +1,20 @@
 
 from setuptools import setup, find_packages
 
-version = '0.1dev'
+version = '0.1'
 
 setup(
     name='repozitory',
     version=version,
     description="SQLAlchemy repository for ZODB objects",
-    long_description="",
+    long_description="See the documentation at "
+        "http://packages.python.org/repozitory",
     # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[],
     keywords='repoze zodb sql sqlalchemy',
     author='Shane Hathaway',
     author_email='shane@hathawaymix.org',
-    url='http://pypi.python.org/pypi/repozitory',
+    url='http://packages.python.org/repozitory',
     license="BSD-derived (http://www.repoze.org/LICENSE.txt)",
     packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
     include_package_data=True,
