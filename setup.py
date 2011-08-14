@@ -6,7 +6,7 @@ version = '0.1'
 setup(
     name='repozitory',
     version=version,
-    description="SQLAlchemy repository for ZODB objects",
+    description="A library for archiving documents using SQLAlchemy",
     long_description="See the documentation at "
         "http://packages.python.org/repozitory",
     # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers

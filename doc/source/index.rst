@@ -15,7 +15,7 @@ storage mechanism such as ZODB. Repozitory stores the document versions
 in a PostgreSQL or SQLite database using SQLAlchemy. Repozitory was
 built for KARL, an open source online collaboration system, but
 Repozitory is intended to be useful for any Python project that stores
-user-editable documents.
+user-editable documents.  Repozitory does not require ZODB.
 
 Using Repozitory, an application can support document versioning
 without burdening its own database schema with support for multiple
