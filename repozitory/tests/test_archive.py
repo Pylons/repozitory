@@ -111,6 +111,25 @@ class ArchiveTest(unittest.TestCase):
         rows = archive.session.query(ArchivedItemDeleted).all()
         self.assertEqual(len(rows), 0)
 
+    def test_archive_object_with_no_attrs(self):
+        obj = self._make_dummy_object_version()
+        obj.attrs = None
+        archive = self._make_default()
+        ver = archive.archive(obj)
+        self.assertEqual(ver, 1)
+
+        from repozitory.schema import ArchivedState
+        rows = archive.session.query(ArchivedState).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].docid, 4)
+        self.assertEqual(rows[0].version_num, 1)
+        self.assertEqual(rows[0].path, u'/my/object')
+        self.assertEqual(rows[0].modified, datetime.datetime(2011, 4, 7))
+        self.assertEqual(rows[0].title, u'Cool Object')
+        self.assertEqual(rows[0].description, None)
+        self.assertEqual(rows[0].attrs, None)
+        self.assertEqual(rows[0].comment, u'I like version control.')
+
     def test_archive_2_revisions_of_simple_object(self):
         obj = self._make_dummy_object_version()
         archive = self._make_default()
@@ -351,6 +370,10 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[0].blobs.keys(), ['x'])
         blob = records[0].blobs['x']
         self.assertEqual(blob.read(), '42')
+        with self.assertRaises(IOError):
+            blob.write('x')
+        with self.assertRaises(IOError):
+            blob.writelines(['x'])
 
         self.assertFalse(records[1].blobs)
 
@@ -369,6 +392,17 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(records[0].blobs.keys(), ['x'])
         blob = records[0].blobs['x']
         self.assertEqual(len(blob.read()), 10485760)
+
+    def test_history_only_current(self):
+        archive = self._make_default()
+        obj = self._make_dummy_object_version()
+        archive.archive(obj)
+        obj.attrs = None
+        archive.archive(obj)
+
+        records = archive.history(obj.docid, only_current=True)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].attrs, {})
 
     def test_reverted(self):
         obj = self._make_dummy_object_version()
@@ -589,7 +623,7 @@ class ArchiveTest(unittest.TestCase):
         rows = archive.session.query(ArchivedItemDeleted).all()
         self.assertEqual(len(rows), 0)
 
-    def test_archive_container_with_rename(self):
+    def test_archive_container_with_item_rename(self):
         archive = self._make_default()
         obj4 = self._make_dummy_object_version()
         obj6 = self._make_dummy_object_version()
@@ -631,6 +665,40 @@ class ArchiveTest(unittest.TestCase):
         rows = archive.session.query(ArchivedItemDeleted).all()
         self.assertEqual(len(rows), 0)
 
+    def test_archive_container_with_path_change(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+
+        class DummyContainerVersion:
+            container_id = 5
+            path = '/my/container'
+            map = {'a': 4}
+            ns_map = None
+
+        c = DummyContainerVersion()
+        archive.archive_container(c, 'user1')
+        c.path = '/your/container'
+        archive.archive_container(c, 'user2')
+
+        from repozitory.schema import ArchivedContainer
+        rows = archive.session.query(ArchivedContainer).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].path, u'/your/container')
+
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem)
+            .order_by(ArchivedItem.namespace).all())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 5)
+        self.assertEqual(rows[0].namespace, u'')
+        self.assertEqual(rows[0].name, u'a')
+        self.assertEqual(rows[0].docid, 4)
+
+        from repozitory.schema import ArchivedItemDeleted
+        rows = archive.session.query(ArchivedItemDeleted).all()
+        self.assertEqual(len(rows), 0)
 
     def test_archive_container_with_changing_docid(self):
         archive = self._make_default()

@@ -409,7 +409,7 @@ class ObjectHistoryRecord(object):
         self.description = state.description
         self.docid = state.docid
         self.path = state.path
-        self.attrs = state.attrs
+        self.attrs = state.attrs or {}
         self.version_num = state.version_num
         self.archive_time = state.archive_time
         self.user = state.user
