@@ -5,7 +5,7 @@ from zope.interface import Interface
 try:  # pragma: no cover
     from zope.dublincore.interfaces import IDCDescriptiveProperties
     from zope.dublincore.interfaces import IDCTimes
-except ImportError:    
+except ImportError:
     # We don't really need to depend on the bulky zope.dublincore
     # package if it's not installed.  This is a copy of the interfaces
     # we are interested in.
@@ -57,7 +57,7 @@ class IArchive(Interface):
         """Add a version to the archive of an object.
 
         The obj parameter must provide the IObjectVersion interface.
-        The object does not need to have been in the archive previously.  
+        The object does not need to have been in the archive previously.
 
         Returns the new version number.
         """
@@ -72,6 +72,10 @@ class IArchive(Interface):
         is returned in the list.  (The most current history record
         might not be the most recent version number if the object
         has been reverted.)
+        """
+
+    def get_version(docid, version_num):
+        """Return a specific IObjectHistoryRecord for a document.
         """
 
     def reverted(docid, version_num):
@@ -228,3 +232,8 @@ class IDeletedItem(Interface):
     deleted_time = Attribute("When the object was deleted (a UTC datetime).")
 
     deleted_by = Attribute("Who deleted the object (a string).")
+
+    new_container_ids = Attribute("""Container(s) where the object now exists.
+
+    Empty or None if the object is not currently in any container.
+    """)

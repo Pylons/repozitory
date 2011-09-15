@@ -58,7 +58,7 @@ class Archive(object):
     """An object archive that uses SQLAlchemy.
 
     Note: instances of this class may be stored in ZODB, so instances
-    should only hold things that can be pickled.
+    must only hold things that can be pickled.
     """
     implements(IArchive)
 
@@ -108,10 +108,10 @@ class Archive(object):
             )
             session.add(arc_obj)
         else:
-            (max_version,) = (
+            max_version = (
                 session.query(func.max(ArchivedState.version_num))
                 .filter_by(docid=docid)
-                .one())
+                .scalar())
 
         arc_current = (
             session.query(ArchivedCurrent)
@@ -264,18 +264,32 @@ class Archive(object):
         Returns a list of IObjectHistoryRecord.
         The most recent version is listed first.
         """
-        created = (self.session.query(ArchivedObject)
+        created = (self.session.query(ArchivedObject.created)
             .filter_by(docid=docid)
-            .one()).created
-        current_version = (self.session.query(ArchivedCurrent)
+            .scalar())
+        current_version = (self.session.query(ArchivedCurrent.version_num)
             .filter_by(docid=docid)
-            .one()).version_num
+            .scalar())
         q = self.session.query(ArchivedState).filter_by(docid=docid)
         if only_current:
             q = q.filter_by(version_num=current_version)
         rows = q.order_by(ArchivedState.version_num.desc()).all()
         return [ObjectHistoryRecord(row, created, current_version)
             for row in rows]
+
+    def get_version(self, docid, version_num):
+        """Return a specific IObjectHistoryRecord for a document.
+        """
+        created = (self.session.query(ArchivedObject.created)
+            .filter_by(docid=docid)
+            .scalar())
+        current_version = (self.session.query(ArchivedCurrent.version_num)
+            .filter_by(docid=docid)
+            .scalar())
+        row = (self.session.query(ArchivedState)
+            .filter_by(docid=docid, version_num=version_num)
+            .one())
+        return ObjectHistoryRecord(row, created, current_version)
 
     def reverted(self, docid, version_num):
         """Tell the database that an object has been reverted."""
@@ -492,20 +506,34 @@ class ContainerRecord(object):
             else:
                 self.map[name] = item.docid
 
-        deleted_list = (session.query(ArchivedItemDeleted)
+        deleted_rows = (session.query(ArchivedItemDeleted)
             .filter_by(container_id=self.container_id)
             .order_by(ArchivedItemDeleted.deleted_time.desc(),
                 ArchivedItemDeleted.namespace, ArchivedItemDeleted.name)
             .all())
-        self.deleted = [DeletedItem(r) for r in deleted_list]
+        new_container_map = {}  # {docid: [new_container_id]}
+        if deleted_rows:
+            # Get the list of new container_ids for all objects
+            # deleted from this container.
+            docids = [row.docid for row in deleted_rows]
+            new_container_rows = (
+                session.query(ArchivedItem.docid, ArchivedItem.container_id)
+                .filter(ArchivedItem.docid.in_(docids))
+                .all()
+            )
+            for docid, container_id in new_container_rows:
+                new_container_map.setdefault(docid, []).append(container_id)
+        self.deleted = [DeletedItem(row, new_container_map.get(row.docid))
+            for row in deleted_rows]
 
 
 class DeletedItem(object):
     implements(IDeletedItem)
 
-    def __init__(self, row):
+    def __init__(self, row, new_container_ids):
         self.docid = row.docid
         self.namespace = row.namespace
         self.name = row.name
         self.deleted_time = row.deleted_time
         self.deleted_by = row.deleted_by
+        self.new_container_ids = new_container_ids

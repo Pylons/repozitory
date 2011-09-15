@@ -385,8 +385,41 @@ The ``deleted`` attribute is a list of objects that provide
     u'123'
     >>> cc.deleted[0].deleted_time is not None
     True
+    >>> cc.deleted[0].new_container_ids is None
+    True
 
-At this point, the application can restore the deleted document by
+Note that the new_container_ids attribute in the example above is None,
+implying the document was deleted, not moved.  Let's move the document
+to a new container.
+
+	>>> new_container = MyContainer(7, {'movie': d})
+	>>> archive.archive_container(MyContainerVersion(new_container), '123')
+	>>> transaction.commit()
+	>>> new_cc = archive.container_contents(7)
+	>>> new_cc.container_id
+	7
+	>>> new_cc.map
+	{u'movie': 5}
+	>>> len(new_cc.deleted)
+	0
+	>>> cc = archive.container_contents(6)
+	>>> cc.container_id
+	6
+	>>> cc.map
+	{}
+	>>> len(cc.deleted)
+	1
+    >>> cc.deleted[0].name
+    u'movie'
+	>>> cc.deleted[0].new_container_ids
+	[7]
+
+The result of the container_contents method now shows that the document
+has been moved to container 7.  The application could use this information
+to redirect users accessing the document in the old container (from a
+bookmark or a stale search result) to the new document location.
+
+The application can also restore the deleted document by
 adding it back to the container. In this example, we already have the
 document as ``d``, but in order to get the document to restore,
 applications normally have to call ``history(docid,

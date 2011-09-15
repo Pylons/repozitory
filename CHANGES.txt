@@ -1,0 +1,15 @@
+0.2 (2011-09-15)
+----------------
+
+- Added the new_container_ids attribute to deleted item records.  This
+  allows undeletion UIs to filter out objects that have moved to another
+  container.  It should also allow applications to redirect users to the new
+  location of a moved object.  No schema migration is needed.
+
+- Added the get_version method to archives.  The get_version method is more
+  efficient than iterating over the entire history of an object.
+
+0.1 (2011-08-14)
+----------------
+
+- Initial release.
