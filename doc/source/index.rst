@@ -101,7 +101,7 @@ following attributes.
     either a filename or an open file object (such as a StringIO).
     Open file objects must be seekable.
 
-    Repozitory automatically de-deplicates binary streams using MD5 and
+    Repozitory automatically de-duplicates binary streams using MD5 and
     SHA-256 hashes, so even if many versions of a document (or many
     documents) use a single large image, Repozitory will store only one
     copy of that image, saving storage space.
