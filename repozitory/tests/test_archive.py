@@ -404,6 +404,23 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].attrs, {})
 
+
+    def test_get_version(self):
+        archive = self._make_default()
+        obj = self._make_dummy_object_version()
+        archive.archive(obj)
+        obj.attrs = None
+        archive.archive(obj)
+
+        v1 = archive.get_version(obj.docid, 1)
+        v2 = archive.get_version(obj.docid, 2)
+        self.assertEqual(v1.attrs, {u'a': 1, u'b': [2]})
+        self.assertEqual(v2.attrs, {})
+        self.assertEqual(v1.version_num, 1)
+        self.assertEqual(v2.version_num, 2)
+        self.assertEqual(v1.current_version, 2)
+        self.assertEqual(v2.current_version, 2)
+
     def test_reverted(self):
         obj = self._make_dummy_object_version()
         archive = self._make_default()
@@ -787,7 +804,7 @@ class ArchiveTest(unittest.TestCase):
         from zope.interface.verify import verifyObject
         from repozitory.interfaces import IContainerRecord
         verifyObject(IContainerRecord, r)
- 
+
         self.assertEqual(r.container_id, 5)
         self.assertEqual(r.path, u'/my/container')
         self.assertEqual(r.map, {'a': 4})
@@ -830,6 +847,52 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(r.deleted[0].name, 'b')
         self.assertEqual(r.deleted[0].deleted_by, 'user2')
         self.assertTrue(r.deleted[0].deleted_time)
+        self.assertFalse(r.deleted[0].new_container_ids)
+
+    def test_container_contents_after_move(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # user1 creates two containers, c5 and c6, putting obj4 in c5.
+        c5 = DummyContainerVersion(5, '/c5')
+        c5.map = {'a': 4}
+        archive.archive_container(c5, 'user1')
+        c6 = DummyContainerVersion(6, '/c6')
+        archive.archive_container(c6, 'user1')
+
+        # user2 moves obj4 from c5 to c6.
+        c5.map = {}
+        archive.archive_container(c5, 'user2')
+        c6.map = {'a': 4}
+        archive.archive_container(c6, 'user2')
+
+        # List the contents of c5.  It should have a deletion record
+        # with new_container_ids providing the new location of the object.
+        r = archive.container_contents(5)
+        self.assertEqual(r.container_id, 5)
+        self.assertEqual(r.map, {})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 1)
+
+        row = r.deleted[0]
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IDeletedItem
+        verifyObject(IDeletedItem, row)
+
+        self.assertEqual(r.deleted[0].docid, 4)
+        self.assertEqual(r.deleted[0].namespace, '')
+        self.assertEqual(r.deleted[0].name, 'a')
+        self.assertEqual(r.deleted[0].deleted_by, 'user2')
+        self.assertTrue(r.deleted[0].deleted_time)
+        self.assertEqual(r.deleted[0].new_container_ids, [6])
 
 
 class DummyObjectVersion:
