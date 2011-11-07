@@ -12,3 +12,4 @@ parts
 *~
 doc/build
 dist
+docs/_build/
