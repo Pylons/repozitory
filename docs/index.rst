@@ -392,27 +392,27 @@ Note that the new_container_ids attribute in the example above is None,
 implying the document was deleted, not moved.  Let's move the document
 to a new container.
 
-	>>> new_container = MyContainer(7, {'movie': d})
-	>>> archive.archive_container(MyContainerVersion(new_container), '123')
-	>>> transaction.commit()
-	>>> new_cc = archive.container_contents(7)
-	>>> new_cc.container_id
-	7
-	>>> new_cc.map
-	{u'movie': 5}
-	>>> len(new_cc.deleted)
-	0
-	>>> cc = archive.container_contents(6)
-	>>> cc.container_id
-	6
-	>>> cc.map
-	{}
-	>>> len(cc.deleted)
-	1
+    >>> new_container = MyContainer(7, {'movie': d})
+    >>> archive.archive_container(MyContainerVersion(new_container), '123')
+    >>> transaction.commit()
+    >>> new_cc = archive.container_contents(7)
+    >>> new_cc.container_id
+    7
+    >>> new_cc.map
+    {u'movie': 5}
+    >>> len(new_cc.deleted)
+    0
+    >>> cc = archive.container_contents(6)
+    >>> cc.container_id
+    6
+    >>> cc.map
+    {}
+    >>> len(cc.deleted)
+    1
     >>> cc.deleted[0].name
     u'movie'
-	>>> cc.deleted[0].new_container_ids
-	[7]
+    >>> cc.deleted[0].new_container_ids
+    [7]
 
 The result of the container_contents method now shows that the document
 has been moved to container 7.  The application could use this information
