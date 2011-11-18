@@ -377,21 +377,24 @@ class ArchiveTest(unittest.TestCase):
 
         self.assertFalse(records[1].blobs)
 
-    def test_history_with_large_blob(self):
+    def test_history_with_blob_having_multiple_chunks(self):
         archive = self._make_default()
+        archive.chunk_size = 13
         obj = self._make_dummy_object_version()
-        obj.blobs = {'x': StringIO('*' * 10485760)}  # 10 MiB
+        expect_blob = 'Abcdefghijk' * 7
+        obj.blobs = {'x': StringIO(expect_blob)}
         archive.archive(obj)
 
         from repozitory.schema import ArchivedChunk
         rows = archive.session.query(ArchivedChunk).all()
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 6)
 
         records = archive.history(obj.docid)
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].blobs.keys(), ['x'])
-        blob = records[0].blobs['x']
-        self.assertEqual(len(blob.read()), 10485760)
+        actual_blob = records[0].blobs['x'].read()
+        self.assertEqual(len(actual_blob), len(expect_blob))
+        self.assertEqual(actual_blob, expect_blob)
 
     def test_history_only_current(self):
         archive = self._make_default()
@@ -403,7 +406,6 @@ class ArchiveTest(unittest.TestCase):
         records = archive.history(obj.docid, only_current=True)
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].attrs, {})
-
 
     def test_get_version(self):
         archive = self._make_default()

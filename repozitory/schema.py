@@ -1,6 +1,7 @@
 
 from repozitory.jsontype import JSONType
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import backref
 from sqlalchemy.orm import deferred
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import Column
@@ -104,8 +105,8 @@ class ArchivedChunk(Base):
     chunk_length = Column(Integer, nullable=False)
     data = deferred(Column(LargeBinary, nullable=False))
 
-    blob = relationship(ArchivedBlobInfo, backref='chunks',
-        order_by=chunk_index)
+    blob = relationship(ArchivedBlobInfo,
+        backref=backref('chunks', order_by=chunk_index))
 
 
 class ArchivedBlobLink(Base):
