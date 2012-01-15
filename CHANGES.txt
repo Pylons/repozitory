@@ -1,5 +1,5 @@
-1.1 (2012-01-14)
-----------------
+Next Release
+------------
 
 - Added the ``iter_hierarchy`` method, which iterates over archived
   containers in a hierarchy more efficiently than repeated calls to
