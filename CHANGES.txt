@@ -1,4 +1,4 @@
-1.1 (2012-01-15)
+1.1 (2012-01-14)
 ----------------
 
 - Added the ``iter_hierarchy`` method, which iterates over archived
