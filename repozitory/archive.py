@@ -404,7 +404,89 @@ class Archive(object):
         row = (session.query(ArchivedContainer)
             .filter_by(container_id=container_id)
             .one())
-        return ContainerRecord(self.session, row)
+        return ContainerRecord(self, session, row)
+
+    def iter_hierarchy(self, top_container_id, max_depth=None,
+            follow_deleted=False, follow_moved=False):
+        """Iterate over IContainerRecords in a hierarchy.
+
+        See IArchive.hierarchy_iter for more details.
+        """
+        session = self.session
+        depth = 0
+        # to_examine is the list of container_ids to examine at the
+        # current depth level.
+        to_examine = [top_container_id]
+        # 'seen' is a defense against container loops.
+        seen = set(to_examine)
+
+        while to_examine:
+
+            # Get all the containers and container contents
+            # at this depth level.
+            container_rows = (session.query(ArchivedContainer)
+                .filter(ArchivedContainer.container_id.in_(to_examine))
+                .all())
+
+            combined_item_list = (session.query(ArchivedItem)
+                .filter(ArchivedItem.container_id.in_(to_examine))
+                .all())
+
+            combined_deleted_rows = (session.query(ArchivedItemDeleted)
+                .filter(ArchivedItemDeleted.container_id.in_(to_examine))
+                .order_by(
+                    ArchivedItemDeleted.deleted_time.desc(),
+                    ArchivedItemDeleted.namespace,
+                    ArchivedItemDeleted.name)
+                .all())
+
+            # Get the map of new container IDs for deleted items at this level.
+            new_container_map = {}
+            if combined_deleted_rows:
+                docids = [row.docid for row in combined_deleted_rows]
+                new_container_rows = (
+                    session.query(
+                        ArchivedItem.docid, ArchivedItem.container_id)
+                    .filter(ArchivedItem.docid.in_(docids))
+                    .all()
+                )
+                for docid, container_id in new_container_rows:
+                    new_container_map.setdefault(docid, []).append(
+                        container_id)
+
+            # Create container records from the data just retrieved.
+            for container_row in container_rows:
+                container_id = container_row.container_id
+                item_list = [item for item in combined_item_list
+                    if item.container_id == container_id]
+                deleted_rows = [row for row in combined_deleted_rows
+                    if row.container_id == container_id]
+                record = ContainerRecord(self, session, container_row,
+                    item_list, deleted_rows, new_container_map)
+                yield record
+
+            # Prepare for the next depth level.
+            depth += 1
+            if max_depth is not None and depth > max_depth:
+                break
+
+            to_examine = []
+
+            for item in combined_item_list:
+                docid = item.docid
+                if not docid in seen:
+                    seen.add(docid)
+                    to_examine.append(docid)
+
+            if follow_deleted or follow_moved:
+                for row in combined_deleted_rows:
+                    docid = row.docid
+                    moved = not not new_container_map.get(docid)
+                    if ((not moved and follow_deleted) or
+                            (moved and follow_moved)):
+                        if not docid in seen:
+                            seen.add(docid)
+                            to_examine.append(docid)
 
 
 class ObjectHistoryRecord(object):
@@ -486,15 +568,19 @@ class BlobReader(object):
 class ContainerRecord(object):
     implements(IContainerRecord)
 
-    def __init__(self, session, row):
+    # Note: this constructor is not part of the documented API.
+    def __init__(self, archive, session, row,
+            item_list=None, deleted_rows=None, new_container_map=None):
+        self._archive = archive
         self.container_id = row.container_id
         self.path = row.path
 
         self.map = {}
         self.ns_map = {}
-        item_list = (session.query(ArchivedItem)
-            .filter_by(container_id=self.container_id)
-            .all())
+        if item_list is None:
+            item_list = (session.query(ArchivedItem)
+                .filter_by(container_id=self.container_id)
+                .all())
         for item in item_list:
             ns = item.namespace
             name = item.name
@@ -506,24 +592,36 @@ class ContainerRecord(object):
             else:
                 self.map[name] = item.docid
 
-        deleted_rows = (session.query(ArchivedItemDeleted)
-            .filter_by(container_id=self.container_id)
-            .order_by(ArchivedItemDeleted.deleted_time.desc(),
-                ArchivedItemDeleted.namespace, ArchivedItemDeleted.name)
-            .all())
-        new_container_map = {}  # {docid: [new_container_id]}
-        if deleted_rows:
-            # Get the list of new container_ids for all objects
-            # deleted from this container.
-            docids = [row.docid for row in deleted_rows]
-            new_container_rows = (
-                session.query(ArchivedItem.docid, ArchivedItem.container_id)
-                .filter(ArchivedItem.docid.in_(docids))
-                .all()
-            )
-            for docid, container_id in new_container_rows:
-                new_container_map.setdefault(docid, []).append(container_id)
-        self.deleted = [DeletedItem(row, new_container_map.get(row.docid))
+        self._deleted_rows = deleted_rows
+        self._new_container_map = new_container_map
+
+    @property
+    def deleted(self):
+        session = self._archive.session
+        deleted_rows = self._deleted_rows
+        if deleted_rows is None:
+            deleted_rows = (session.query(ArchivedItemDeleted)
+                .filter_by(container_id=self.container_id)
+                .order_by(ArchivedItemDeleted.deleted_time.desc(),
+                    ArchivedItemDeleted.namespace, ArchivedItemDeleted.name)
+                .all())
+        new_container_map = self._new_container_map
+        if new_container_map is None:
+            new_container_map = {}  # {docid: [new_container_id]}
+            if deleted_rows:
+                # Get the list of new container_ids for all objects
+                # deleted from this container.
+                docids = [row.docid for row in deleted_rows]
+                new_container_rows = (
+                    session.query(
+                        ArchivedItem.docid, ArchivedItem.container_id)
+                    .filter(ArchivedItem.docid.in_(docids))
+                    .all()
+                )
+                for docid, container_id in new_container_rows:
+                    new_container_map.setdefault(docid, []).append(
+                        container_id)
+        return [DeletedItem(row, new_container_map.get(row.docid))
             for row in deleted_rows]
 
 
@@ -537,3 +635,4 @@ class DeletedItem(object):
         self.deleted_time = row.deleted_time
         self.deleted_by = row.deleted_by
         self.new_container_ids = new_container_ids
+        self.moved = not not new_container_ids

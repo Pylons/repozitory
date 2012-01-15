@@ -99,6 +99,38 @@ class IArchive(Interface):
         """Returns the contents of a container as IContainerRecord.
         """
 
+    def iter_hierarchy(top_container_id, max_depth=None,
+            follow_deleted=False, follow_moved=False):
+        """Iterate over IContainerRecords in a hierarchy.
+
+        This is more efficient than traversing the hierarchy
+        by calling the container_contents method repeatedly, because
+        this method minimizes the number of calls to the database.
+
+        Generates an IContainerRecord for each container in the
+        hierarchy.
+
+        Set the max_depth parameter to limit the depth of containers
+        to include. When max_depth is 0, only the top container is included;
+        when depth is 1, its children are included, and so on.
+        Set max_depth to None (the default) to include containers
+        of arbitrary depth.
+
+        If follow_deleted is true, this method will also include
+        deleted containers and descendants of deleted containers
+        in the results.
+
+        If follow_moved is true, this method will also include
+        moved containers and descendants of moved containers
+        in the results.
+
+        If no container exists by the given top_container_id, this
+        method returns an empty mapping.
+
+        NB: This method assumes that container_ids are also docids.
+        (Most other methods make no such assumption.)
+        """
+
 
 class IObjectVersion(IDCDescriptiveProperties, IDCTimes):
     """The content of an object for version control.
@@ -236,4 +268,9 @@ class IDeletedItem(Interface):
     new_container_ids = Attribute("""Container(s) where the object now exists.
 
     Empty or None if the object is not currently in any container.
+    """)
+
+    moved = Attribute("""True if this item was moved rather than deleted.
+
+    True when new_container_ids is non-empty.
     """)

@@ -1,13 +1,14 @@
-Next release
-------------
+1.1 (2012-01-15)
+----------------
 
-- ...
-
+- Added the ``iter_hierarchy`` method, which iterates over archived
+  containers in a hierarchy more efficiently than repeated calls to
+  ``container_contents``. Designed to help solve lp:913990.
 
 1.0 (2011-11-17)
 ----------------
 
-- Fixed LP #891277: Blob file chunks were sometimes retrieved in the
+- Fixed lp:891277: Blob file chunks were sometimes retrieved in the
   wrong order due to an incorrect backref declaration.
 
 0.2.1 (2011-09-22)

@@ -369,7 +369,35 @@ class ArchiveTest(unittest.TestCase):
         self.assertTrue(records[0].blobs)
         self.assertEqual(records[0].blobs.keys(), ['x'])
         blob = records[0].blobs['x']
+        self.assertEqual(blob.getvalue(), '42')  # StringIO has getvalue()
         self.assertEqual(blob.read(), '42')
+        with self.assertRaises(IOError):
+            blob.write('x')
+        with self.assertRaises(IOError):
+            blob.writelines(['x'])
+
+        self.assertFalse(records[1].blobs)
+
+    def test_history_with_tempfile_blob(self):
+        obj = self._make_dummy_object_version()
+        archive = self._make_default()
+        archive.archive(obj)
+        obj.blobs = {'x': StringIO('data' * 1000)}
+        archive.archive(obj)
+
+        from repozitory.schema import ArchivedChunk
+        rows = archive.session.query(ArchivedChunk).all()
+        self.assertEqual(len(rows), 1)
+
+        records = archive.history(obj.docid)
+        self.assertEqual(len(records), 2)
+
+        self.assertTrue(records[0].blobs)
+        self.assertEqual(records[0].blobs.keys(), ['x'])
+        blob = records[0].blobs['x']
+        blob._max_stringio = 100
+        self.assertFalse(hasattr(blob, 'getvalue'))
+        self.assertEqual(blob.read(), 'data' * 1000)
         with self.assertRaises(IOError):
             blob.write('x')
         with self.assertRaises(IOError):
@@ -895,6 +923,186 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(r.deleted[0].deleted_by, 'user2')
         self.assertTrue(r.deleted[0].deleted_time)
         self.assertEqual(r.deleted[0].new_container_ids, [6])
+
+    def _make_hierarchy(self, archive, move_c7=False):
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # Create a hierarchy:
+        #
+        # c4
+        #   - c5
+        #   - c6 (deleted by user2)
+        #     - c7 (deleted by user2)
+        #     - c8
+        # c9
+        #   - c7 (optionally moved by user3)
+
+        c8 = DummyContainerVersion(8, '/c4/c6/c8')
+        archive.archive_container(c8, 'user1')
+
+        c7 = DummyContainerVersion(7, '/c4/c6/c7')
+        archive.archive_container(c7, 'user1')
+
+        c6 = DummyContainerVersion(6, '/c4/c6')
+        c6.map = {'c7': 7, 'c8': 8}
+        archive.archive_container(c6, 'user1')
+
+        c5 = DummyContainerVersion(5, '/c4/c5')
+        archive.archive_container(c5, 'user1')
+
+        c4 = DummyContainerVersion(4, '/c4')
+        c4.map = {'c5': 5, 'c6': 6}
+        archive.archive_container(c4, 'user1')
+
+        del c6.map['c7']
+        archive.archive_container(c6, 'user2')
+        del c4.map['c6']
+        archive.archive_container(c4, 'user2')
+
+        if move_c7:
+            c9 = DummyContainerVersion(9, '/c9')
+            c9.map = {'c7': 7}
+            archive.archive_container(c9, 'user3')
+
+    def test_iter_hierarchy_with_max_depth_0(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4, max_depth=0, follow_deleted=True))
+        self.assertEqual(set(containers.keys()), set([4]))
+
+    def test_iter_hierarchy_with_max_depth_1(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4, max_depth=1, follow_deleted=True))
+        self.assertEqual(set(containers.keys()), set([4, 5, 6]))
+
+    def test_iter_hierarchy_with_max_depth_2(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4, max_depth=2, follow_deleted=True))
+        self.assertEqual(set(containers.keys()), set([4, 5, 6, 7, 8]))
+
+    def test_iter_hierarchy_without_follow_deleted(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4))
+        self.assertEqual(set(containers.keys()), set([4, 5]))
+
+        r = containers[4]
+        self.assertEqual(r.map, {'c5': 5})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 1)
+
+        row = r.deleted[0]
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IDeletedItem
+        verifyObject(IDeletedItem, row)
+
+        self.assertEqual(r.deleted[0].docid, 6)
+        self.assertEqual(r.deleted[0].namespace, '')
+        self.assertEqual(r.deleted[0].name, 'c6')
+        self.assertEqual(r.deleted[0].deleted_by, 'user2')
+        self.assertTrue(r.deleted[0].deleted_time)
+        self.assertEqual(r.deleted[0].new_container_ids, None)
+
+        r = containers[5]
+        self.assertEqual(r.map, {})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 0)
+
+    def test_iter_hierarchy_with_follow_deleted_and_no_moves(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4, follow_deleted=True))
+        self.assertEqual(set(containers.keys()), set([4, 5, 6, 7, 8]))
+
+        r = containers[6]
+        self.assertEqual(r.map, {'c8': 8})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 1)
+
+        row = r.deleted[0]
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IDeletedItem
+        verifyObject(IDeletedItem, row)
+
+        self.assertEqual(r.deleted[0].docid, 7)
+        self.assertEqual(r.deleted[0].namespace, '')
+        self.assertEqual(r.deleted[0].name, 'c7')
+        self.assertEqual(r.deleted[0].deleted_by, 'user2')
+        self.assertTrue(r.deleted[0].deleted_time)
+        self.assertEqual(r.deleted[0].new_container_ids, None)
+
+        r = containers[7]
+        self.assertEqual(r.map, {})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 0)
+
+    def test_iter_hierarchy_with_follow_deleted_and_1_move(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive, move_c7=True)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4, follow_deleted=True))
+        self.assertEqual(set(containers.keys()), set([4, 5, 6, 8]))
+
+        r = containers[6]
+        self.assertEqual(r.map, {'c8': 8})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 1)
+
+        row = r.deleted[0]
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IDeletedItem
+        verifyObject(IDeletedItem, row)
+
+        self.assertEqual(r.deleted[0].docid, 7)
+        self.assertEqual(r.deleted[0].namespace, '')
+        self.assertEqual(r.deleted[0].name, 'c7')
+        self.assertEqual(r.deleted[0].deleted_by, 'user2')
+        self.assertTrue(r.deleted[0].deleted_time)
+        self.assertEqual(r.deleted[0].new_container_ids, [9])
+
+    def test_iter_hierarchy_with_follow_deleted_and_follow_moved(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive, move_c7=True)
+
+        containers = dict((record.container_id, record) for record in
+            archive.iter_hierarchy(4, follow_deleted=True, follow_moved=True))
+        self.assertEqual(set(containers.keys()), set([4, 5, 6, 7, 8]))
+
+        r = containers[6]
+        self.assertEqual(r.map, {'c8': 8})
+        self.assertEqual(r.ns_map, {})
+        self.assertEqual(len(r.deleted), 1)
+
+        row = r.deleted[0]
+        from zope.interface.verify import verifyObject
+        from repozitory.interfaces import IDeletedItem
+        verifyObject(IDeletedItem, row)
+
+        self.assertEqual(r.deleted[0].docid, 7)
+        self.assertEqual(r.deleted[0].namespace, '')
+        self.assertEqual(r.deleted[0].name, 'c7')
+        self.assertEqual(r.deleted[0].deleted_by, 'user2')
+        self.assertTrue(r.deleted[0].deleted_time)
+        self.assertEqual(r.deleted[0].new_container_ids, [9])
 
 
 class DummyObjectVersion:
