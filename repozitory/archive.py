@@ -406,6 +406,15 @@ class Archive(object):
             .one())
         return ContainerRecord(self, session, row)
 
+    def filter_container_ids(self, container_ids):
+        """Return which of the specified container IDs exist in the archive.
+        """
+        session = self.session
+        rows = (session.query(ArchivedContainer.container_id)
+            .filter_by(ArchivedContainer.container_id.in_(container_ids))
+            .all())
+        return [container_id for (container_id,) in rows]
+
     def iter_hierarchy(self, top_container_id, max_depth=None,
             follow_deleted=False, follow_moved=False):
         """Iterate over IContainerRecords in a hierarchy.
