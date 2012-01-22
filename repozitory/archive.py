@@ -411,7 +411,7 @@ class Archive(object):
         """
         session = self.session
         rows = (session.query(ArchivedContainer.container_id)
-            .filter_by(ArchivedContainer.container_id.in_(container_ids))
+            .filter(ArchivedContainer.container_id.in_(container_ids))
             .all())
         return [container_id for (container_id,) in rows]
 
