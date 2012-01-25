@@ -106,8 +106,7 @@ class IArchive(Interface):
         This is more efficient than traversing the hierarchy
         by calling the container_contents method repeatedly, because
         this method minimizes the number of calls to the database.
-
-        Generates an IContainerRecord for each container in the
+        Yields an IContainerRecord for each container in the
         hierarchy.
 
         Set the max_depth parameter to limit the depth of containers
@@ -126,6 +125,26 @@ class IArchive(Interface):
 
         If no container exists by the given top_container_id, this
         method returns an empty mapping.
+
+        NB: This method assumes that container_ids are also docids.
+        (Most other methods make no such assumption.)
+        """
+
+    def filter_container_ids(container_ids):
+        """Returns which of the specified container IDs exist in the archive.
+
+        Returns a sequence containing a subset of the provided container_ids.
+        """
+
+    def which_contain_deleted(self, container_ids, max_depth=None):
+        """Returns the subset of container_ids that have had something deleted.
+
+        This is useful for building a hierarchical trash UI that allows
+        users to visit only containers that have had something deleted.
+        All descendant containers are examined (unless max_depth limits
+        the search.)
+
+        Returns a sequence containing a subset of the provided container_ids.
 
         NB: This method assumes that container_ids are also docids.
         (Most other methods make no such assumption.)
