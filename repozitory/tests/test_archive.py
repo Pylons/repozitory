@@ -31,8 +31,8 @@ class ArchiveTest(unittest.TestCase):
         params = EngineParams('sqlite:///')
         return self._make(params)
 
-    def _make_dummy_object_version(self):
-        return DummyObjectVersion()
+    def _make_dummy_object_version(self, docid=4):
+        return DummyObjectVersion(docid)
 
     def test_verifyImplements_IArchive(self):
         from zope.interface.verify import verifyClass
@@ -924,7 +924,7 @@ class ArchiveTest(unittest.TestCase):
         self.assertTrue(r.deleted[0].deleted_time)
         self.assertEqual(r.deleted[0].new_container_ids, [6])
 
-    def _make_hierarchy(self, archive, move_c7=False):
+    def _make_hierarchy(self, archive, delete_c6=True, move_c7=False):
 
         class DummyContainerVersion:
             def __init__(self, container_id, path):
@@ -937,7 +937,7 @@ class ArchiveTest(unittest.TestCase):
         #
         # c4
         #   - c5
-        #   - c6 (deleted by user2)
+        #   - c6 (optionally deleted by user2)
         #     - c7 (deleted by user2)
         #     - c8
         # c9
@@ -962,13 +962,16 @@ class ArchiveTest(unittest.TestCase):
 
         del c6.map['c7']
         archive.archive_container(c6, 'user2')
-        del c4.map['c6']
-        archive.archive_container(c4, 'user2')
+        if delete_c6:
+            del c4.map['c6']
+            archive.archive_container(c4, 'user2')
 
         if move_c7:
             c9 = DummyContainerVersion(9, '/c9')
             c9.map = {'c7': 7}
             archive.archive_container(c9, 'user3')
+
+        return c4
 
     def test_iter_hierarchy_with_max_depth_0(self):
         archive = self._make_default()
@@ -1104,9 +1107,47 @@ class ArchiveTest(unittest.TestCase):
         self.assertTrue(r.deleted[0].deleted_time)
         self.assertEqual(r.deleted[0].new_container_ids, [9])
 
+    def test_filter_container_ids(self):
+        archive = self._make_default()
+        c4 = self._make_hierarchy(archive)
+        obj3 = self._make_dummy_object_version(3)
+        archive.archive(obj3)
+        c4.map['obj3'] = 3
+        archive.archive_container(c4, 'user4')
+        actual = archive.filter_container_ids([3, 4, 5])
+        expect = [4, 5]
+        self.assertEqual(set(expect), set(actual))
+
+    def test_which_contain_deleted_simple(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive)
+        actual = archive.which_contain_deleted([5, 6])
+        expect = [6]
+        self.assertEqual(set(expect), set(actual))
+
+    def test_which_contain_deleted_with_successful_depth_traversal(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive, delete_c6=False)
+        actual = archive.which_contain_deleted([4])
+        expect = [4]
+        self.assertEqual(set(expect), set(actual))
+
+    def test_which_contain_deleted_with_traversal_exceeding_max_depth(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive, delete_c6=False)
+        actual = archive.which_contain_deleted([4], max_depth=0)
+        expect = []
+        self.assertEqual(set(expect), set(actual))
+
+    def test_which_contain_deleted_ignore_moved(self):
+        archive = self._make_default()
+        self._make_hierarchy(archive, delete_c6=False, move_c7=True)
+        actual = archive.which_contain_deleted([5, 6])
+        expect = []
+        self.assertEqual(set(expect), set(actual))
+
 
 class DummyObjectVersion:
-    docid = 4
     path = '/my/object'
     created = datetime.datetime(2011, 4, 6)
     modified = datetime.datetime(2011, 4, 7)
@@ -1115,3 +1156,6 @@ class DummyObjectVersion:
     attrs = {'a': 1, 'b': [2]}
     user = 'tester'
     comment = 'I like version control.'
+
+    def __init__(self, docid):
+        self.docid = docid

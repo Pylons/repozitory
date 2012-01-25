@@ -3,7 +3,10 @@ Next Release
 
 - Added the ``iter_hierarchy`` method, which iterates over archived
   containers in a hierarchy more efficiently than repeated calls to
-  ``container_contents``. Designed to help solve lp:913990.
+  ``container_contents``.
+
+- Added the ``which_contain_deleted`` method, which is helpful
+  for making a trash UI. Designed to help solve lp:913990.
 
 1.0 (2011-11-17)
 ----------------

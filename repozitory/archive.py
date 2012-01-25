@@ -406,20 +406,11 @@ class Archive(object):
             .one())
         return ContainerRecord(self, session, row)
 
-    def filter_container_ids(self, container_ids):
-        """Return which of the specified container IDs exist in the archive.
-        """
-        session = self.session
-        rows = (session.query(ArchivedContainer.container_id)
-            .filter(ArchivedContainer.container_id.in_(container_ids))
-            .all())
-        return [container_id for (container_id,) in rows]
-
     def iter_hierarchy(self, top_container_id, max_depth=None,
             follow_deleted=False, follow_moved=False):
         """Iterate over IContainerRecords in a hierarchy.
 
-        See IArchive.hierarchy_iter for more details.
+        See IArchive.iter_hierarchy for more details.
         """
         session = self.session
         depth = 0
@@ -496,6 +487,86 @@ class Archive(object):
                         if not docid in seen:
                             seen.add(docid)
                             to_examine.append(docid)
+
+    def filter_container_ids(self, container_ids):
+        """Return which of the specified container IDs exist in the archive.
+        """
+        session = self.session
+        rows = (session.query(ArchivedContainer.container_id)
+            .filter(ArchivedContainer.container_id.in_(container_ids))
+            .all())
+        return [container_id for (container_id,) in rows]
+
+    def which_contain_deleted(self, container_ids, max_depth=None):
+        """Return the subset of container_ids that have something deleted.
+        """
+        session = self.session
+        depth = 0
+        forward = {}  # ancestor_id: set([container_id])
+        reverse = {}  # container_id: set([ancestor_id])
+        seen = {}     # ancestor_id: set([container_id])
+        for container_id in container_ids:
+            forward[container_id] = set([container_id])
+            reverse[container_id] = set([container_id])
+            seen[container_id] = set([container_id])
+        res = set()
+
+        while True:
+            # Figure out which of the current docids have been deleted.
+            to_examine = reverse.keys()
+            if not to_examine:
+                break
+            deleted_rows = (session.query(
+                    ArchivedItemDeleted.container_id,
+                    ArchivedItemDeleted.docid,
+                )
+                .filter(ArchivedItemDeleted.container_id.in_(to_examine))
+                .all())
+
+            if deleted_rows:
+                # Found objects that have been removed from these containers.
+                # Now, identify docids that have been moved, not deleted.
+                docids = [docid for (_, docid) in deleted_rows]
+                moved = set(docid for (docid,) in
+                    session.query(ArchivedItem.docid)
+                    .filter(ArchivedItem.docid.in_(docids))
+                    .all())
+                # For each deleted item, add to the list of results
+                # and remove from the set of containers to examine further.
+                for (container_id, docid) in deleted_rows:
+                    if docid not in moved:
+                        for ancestor_id in reverse[container_id]:
+                            res.add(ancestor_id)
+                            forward.pop(ancestor_id, None)
+                            seen.pop(ancestor_id, None)
+
+            depth += 1
+            if max_depth is not None and depth > max_depth:
+                break
+
+            # Move to the next level.
+            to_examine = set().union(*forward.values())
+            if not to_examine:
+                break
+            next_forward = {}
+            next_reverse = {}
+            rows = (session.query(
+                    ArchivedItem.container_id, ArchivedItem.docid)
+                .filter(ArchivedItem.container_id.in_(to_examine))
+                .all())
+            for (container_id, docid) in rows:
+                for ancestor_id in reverse[container_id]:
+                    if docid not in seen[ancestor_id]:
+                        seen[ancestor_id].add(docid)
+                        fwd_set = next_forward.get(ancestor_id)
+                        if fwd_set is None:
+                            next_forward[ancestor_id] = fwd_set = set()
+                        fwd_set.add(docid)
+                        next_reverse.setdefault(docid, set()).add(ancestor_id)
+            forward = next_forward
+            reverse = next_reverse
+
+        return res
 
 
 class ObjectHistoryRecord(object):
