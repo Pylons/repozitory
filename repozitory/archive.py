@@ -574,25 +574,13 @@ class Archive(object):
     def shred(self, docids=(), container_ids=()):
         """Delete the specified objects and containers permanently.
 
-        The objects to shred must not exist in any container
-        (exempting the containers to be shredded) and the
-        containers must not contain any objects (exempting the
-        objects to be shredded). If these rules are not met, this
-        method will raise a ValueError.
+        The containers to shred must not contain any objects (exempting the
+        objects to be shredded), or a ValueError will be raised.
         """
         session = self.session
         conflicting_item = None
 
-        if docids:
-            # Verify none of the objects exist in any container
-            # (except the containers to be shredded.)
-            q = session.query(ArchivedItem).filter(
-                ArchivedItem.docid.in_(docids))
-            if container_ids:
-                q = q.filter(~ArchivedItem.container_id.in_(container_ids))
-            conflicting_item = q.order_by(ArchivedItem.docid).first()
-
-        if container_ids and conflicting_item is None:
+        if container_ids:
             # Verify none of the containers contain any objects
             # (except the objects to be shredded.)
             q = session.query(ArchivedItem).filter(
@@ -620,11 +608,11 @@ class Archive(object):
             # (Although we could rely on cascading, it seems useful to
             # delete the rows explicitly to prevent accidents.)
             log.warning("Shredding containers: %s", container_ids)
-            (session.query(ArchivedItem)
-                .filter(ArchivedItem.container_id.in_(container_ids))
-                .delete(False))
             (session.query(ArchivedItemDeleted)
                 .filter(ArchivedItemDeleted.container_id.in_(container_ids))
+                .delete(False))
+            (session.query(ArchivedItem)
+                .filter(ArchivedItem.container_id.in_(container_ids))
                 .delete(False))
             (session.query(ArchivedContainer)
                 .filter(ArchivedContainer.container_id.in_(container_ids))
@@ -632,21 +620,21 @@ class Archive(object):
 
         if docids:
             # Shred the specified objects.
-            log.warning("Shredding objects: %s", container_ids)
+            log.warning("Shredding objects: %s", docids)
+            (session.query(ArchivedItemDeleted)
+                .filter(ArchivedItemDeleted.docid.in_(docids))
+                .delete(False))
             (session.query(ArchivedItem)
                 .filter(ArchivedItem.docid.in_(docids))
                 .delete(False))
-            (session.query(ArchivedItemDeleted)
-                .filter(ArchivedItemDeleted.docid.in_(docids))
+            (session.query(ArchivedBlobLink)
+                .filter(ArchivedBlobLink.docid.in_(docids))
                 .delete(False))
             (session.query(ArchivedCurrent)
                 .filter(ArchivedCurrent.docid.in_(docids))
                 .delete(False))
             (session.query(ArchivedState)
                 .filter(ArchivedState.docid.in_(docids))
-                .delete(False))
-            (session.query(ArchivedBlobLink)
-                .filter(ArchivedBlobLink.docid.in_(docids))
                 .delete(False))
             (session.query(ArchivedObject)
                 .filter(ArchivedObject.docid.in_(docids))

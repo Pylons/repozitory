@@ -153,11 +153,8 @@ class IArchive(Interface):
     def shred(docids=(), container_ids=()):
         """Delete the specified objects and containers permanently.
 
-        The objects to shred must not exist in any container
-        (exempting the containers to be shredded) and the
-        containers must not contain any objects (exempting the
-        objects to be shredded). If these rules are not met, this
-        method will raise a ValueError.
+        The containers to shred must not contain any objects (exempting the
+        objects to be shredded), or a ValueError will be raised.
 
         Returns None.
         """

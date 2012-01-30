@@ -1301,26 +1301,6 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(rows[0].container_id, 7)
         self.assertEqual(rows[0].docid, 6)
 
-    def test_shred_must_not_delete_an_object_still_in_a_container(self):
-        archive = self._make_default()
-        obj4 = self._make_dummy_object_version()
-        archive.archive(obj4)
-
-        class DummyContainerVersion:
-            def __init__(self, container_id, path):
-                self.container_id = container_id
-                self.path = path
-                self.map = {}
-                self.ns_map = {}
-
-        # Archive c5, which contains obj4.
-        c5 = DummyContainerVersion(5, '/c5')
-        c5.map = {'a': 4}
-        archive.archive_container(c5, 'user1')
-
-        with self.assertRaises(ValueError):
-            archive.shred([4])
-
     def test_shred_must_not_delete_a_non_empty_container(self):
         archive = self._make_default()
         obj4 = self._make_dummy_object_version()
