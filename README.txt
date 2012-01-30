@@ -6,4 +6,4 @@ built for KARL, an open source online collaboration system, but
 Repozitory is intended to be useful for any Python project that stores
 user-editable documents.  Repozitory does not require ZODB.
 
-See the documentation at http://packages.python.org/repozitory .
+See the documentation at http://readthedocs.org/docs/repozitory .
