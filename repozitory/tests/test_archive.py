@@ -1112,7 +1112,7 @@ class ArchiveTest(unittest.TestCase):
         self.assertTrue(r.deleted[0].deleted_time)
         self.assertEqual(r.deleted[0].new_container_ids, [9])
 
-    def test_filter_container_ids(self):
+    def test_filter_container_ids_with_nonempty_parameter(self):
         archive = self._make_default()
         c4 = self._make_hierarchy(archive)
         obj3 = self._make_dummy_object_version(3)
@@ -1122,6 +1122,10 @@ class ArchiveTest(unittest.TestCase):
         actual = archive.filter_container_ids([3, 4, 5])
         expect = [4, 5]
         self.assertEqual(set(expect), set(actual))
+
+    def test_filter_container_ids_with_empty_parameter(self):
+        archive = self._make_default()
+        self.assertEqual(archive.filter_container_ids(()), [])
 
     def test_which_contain_deleted_simple(self):
         archive = self._make_default()

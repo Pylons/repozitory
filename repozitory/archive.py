@@ -494,6 +494,8 @@ class Archive(object):
     def filter_container_ids(self, container_ids):
         """Return which of the specified container IDs exist in the archive.
         """
+        if not container_ids:
+            return []
         session = self.session
         rows = (session.query(ArchivedContainer.container_id)
             .filter(ArchivedContainer.container_id.in_(container_ids))
@@ -595,13 +597,12 @@ class Archive(object):
 
         # List the blob_ids referenced by the objects to shred.
         # (Later, orphaned blobs will also be shredded.)
+        blob_ids = None
         if docids:
             blob_id_rows = (session.query(ArchivedBlobLink.blob_id)
                 .filter(ArchivedBlobLink.docid.in_(docids))
                 .all())
             blob_ids = set(blob_id for (blob_id,) in blob_id_rows)
-        else:
-            blob_ids = None
 
         if container_ids:
             # Shred the specified containers.
