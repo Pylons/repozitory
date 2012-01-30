@@ -2,7 +2,12 @@
 
 from StringIO import StringIO
 import datetime
-import unittest2 as unittest
+
+try:
+    import unittest2 as unittest
+except ImportError:
+    # Python 2.7+
+    import unittest
 
 
 class ArchiveTest(unittest.TestCase):
@@ -483,7 +488,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {}
+            map = {}  # @ReservedAssignment
             ns_map = {}
 
         archive.archive_container(DummyContainerVersion(), 'testuser')
@@ -514,7 +519,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         archive.archive_container(DummyContainerVersion(), 'testuser')
@@ -553,7 +558,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         c = DummyContainerVersion()
@@ -596,7 +601,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         c = DummyContainerVersion()
@@ -640,7 +645,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         c = DummyContainerVersion()
@@ -681,7 +686,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         c = DummyContainerVersion()
@@ -720,7 +725,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = None
 
         c = DummyContainerVersion()
@@ -758,7 +763,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         c = DummyContainerVersion()
@@ -801,7 +806,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {}
+            map = {}  # @ReservedAssignment
             ns_map = {}
 
         archive.archive_container(DummyContainerVersion(), 'testuser')
@@ -824,7 +829,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         archive.archive_container(DummyContainerVersion(), 'testuser')
@@ -852,7 +857,7 @@ class ArchiveTest(unittest.TestCase):
         class DummyContainerVersion:
             container_id = 5
             path = '/my/container'
-            map = {'a': 4}
+            map = {'a': 4}  # @ReservedAssignment
             ns_map = {'headers': {'b': 6}}
 
         c = DummyContainerVersion()
@@ -1145,6 +1150,196 @@ class ArchiveTest(unittest.TestCase):
         actual = archive.which_contain_deleted([5, 6])
         expect = []
         self.assertEqual(set(expect), set(actual))
+
+    def test_shred_with_object_success(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # Archive c5, which contains obj4.
+        c5 = DummyContainerVersion(5, '/c5')
+        c5.map = {'a': 4}
+        archive.archive_container(c5, 'user1')
+        # Now delete obj4 from c5.
+        c5.map = {}
+        archive.archive_container(c5, 'user1')
+
+        # Verify obj4 still exists.
+        contents = archive.container_contents(5)
+        self.assertEqual(len(contents.deleted), 1)
+        from repozitory.schema import ArchivedObject
+        rowcount = (archive.session.query(ArchivedObject).count())
+        self.assertEqual(rowcount, 1)
+
+        # Shred obj4.
+        archive.shred([4])
+
+        # Verify the object is no longer readable in any way.
+        contents = archive.container_contents(5)
+        self.assertFalse(contents.deleted)
+        rowcount = (archive.session.query(ArchivedObject).count())
+        self.assertEqual(rowcount, 0)
+
+    def test_shred_with_object_and_orphaned_blobs(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj4.blobs = {'spam': StringIO('eggs'), 'ham': StringIO('bacon')}
+        archive.archive(obj4)
+
+        # Verify two blobs were created.
+        from repozitory.schema import ArchivedBlobInfo
+        rowcount = (archive.session.query(ArchivedBlobInfo).count())
+        self.assertEqual(rowcount, 2)
+
+        # Shred obj4.
+        archive.shred([4])
+
+        # Verify the blobs are no longer readable in any way.
+        rowcount = (archive.session.query(ArchivedBlobInfo).count())
+        self.assertEqual(rowcount, 0)
+
+    def test_shred_with_object_but_keep_a_shared_blob(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        obj4.blobs = {'spam': StringIO('eggs'), 'ham': StringIO('bacon')}
+        archive.archive(obj4)
+        obj6 = self._make_dummy_object_version(6)
+        obj6.blobs = {'sausage': StringIO('eggs')}
+        archive.archive(obj6)
+
+        # Verify two blobs were created.
+        from repozitory.schema import ArchivedChunk
+        rowcount = (archive.session.query(ArchivedChunk).count())
+        self.assertEqual(rowcount, 2)
+
+        # Shred obj4.
+        archive.shred([4])
+
+        # Verify the 'eggs' blob still exists since it was shared with
+        # obj6.
+        row = (archive.session.query(ArchivedChunk).one())
+        self.assertEqual(row.data, 'eggs')
+
+    def test_shred_with_object_and_container_success(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # Archive c5, which contains obj4.
+        c5 = DummyContainerVersion(5, '/c5')
+        c5.map = {'a': 4}
+        archive.archive_container(c5, 'user1')
+
+        # Shred the document and the container at the same time.
+        archive.shred([4], [5])
+
+        # Verify the object and container are no longer readable in any way.
+        container_ids = archive.filter_container_ids([5])
+        self.assertFalse(container_ids)
+        from repozitory.schema import ArchivedObject
+        rowcount = (archive.session.query(ArchivedObject).count())
+        self.assertEqual(rowcount, 0)
+        from repozitory.schema import ArchivedContainer
+        rowcount = (archive.session.query(ArchivedContainer).count())
+        self.assertEqual(rowcount, 0)
+
+    def test_shred_must_not_remove_other_object_and_container(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+        obj6 = self._make_dummy_object_version(6)
+        archive.archive(obj6)
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # Archive c5, which contains obj4.
+        c5 = DummyContainerVersion(5, '/c5')
+        c5.map = {'a': 4}
+        archive.archive_container(c5, 'user1')
+
+        # Archive c7, which contains obj6.
+        c7 = DummyContainerVersion(7, '/c7')
+        c7.map = {'a': 6}
+        archive.archive_container(c7, 'user1')
+
+        # Shred obj4 and c5.
+        archive.shred([4], [5])
+
+        # Verify obj6 and c7 still exist, but not obj4 or c5.
+        container_ids = archive.filter_container_ids([4, 5, 6, 7])
+        self.assertEqual(set(container_ids), set([7]))
+        from repozitory.schema import ArchivedObject
+        rows = (archive.session.query(ArchivedObject).all())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].docid, 6)
+        from repozitory.schema import ArchivedContainer
+        rows = (archive.session.query(ArchivedContainer).all())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 7)
+        from repozitory.schema import ArchivedItem
+        rows = (archive.session.query(ArchivedItem).all())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].container_id, 7)
+        self.assertEqual(rows[0].docid, 6)
+
+    def test_shred_must_not_delete_an_object_still_in_a_container(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # Archive c5, which contains obj4.
+        c5 = DummyContainerVersion(5, '/c5')
+        c5.map = {'a': 4}
+        archive.archive_container(c5, 'user1')
+
+        with self.assertRaises(ValueError):
+            archive.shred([4])
+
+    def test_shred_must_not_delete_a_non_empty_container(self):
+        archive = self._make_default()
+        obj4 = self._make_dummy_object_version()
+        archive.archive(obj4)
+
+        class DummyContainerVersion:
+            def __init__(self, container_id, path):
+                self.container_id = container_id
+                self.path = path
+                self.map = {}
+                self.ns_map = {}
+
+        # Archive c5, which contains obj4.
+        c5 = DummyContainerVersion(5, '/c5')
+        c5.map = {'a': 4}
+        archive.archive_container(c5, 'user1')
+
+        with self.assertRaises(ValueError):
+            archive.shred((), [5])
 
 
 class DummyObjectVersion:

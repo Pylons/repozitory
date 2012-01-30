@@ -23,9 +23,12 @@ from zope.interface import implements
 from zope.sqlalchemy import ZopeTransactionExtension
 import datetime
 import hashlib
+import logging
 import tempfile
 
 _global_sessions = {}  # {db_string: SQLAlchemy session}
+
+log = logging.getLogger(__name__)
 
 
 def forget_sessions():
@@ -278,7 +281,7 @@ class Archive(object):
             for row in rows]
 
     def get_version(self, docid, version_num):
-        """Return a specific IObjectHistoryRecord for a document.
+        """Return a specific IObjectHistoryRecord for an object.
         """
         created = (self.session.query(ArchivedObject.created)
             .filter_by(docid=docid)
@@ -531,7 +534,7 @@ class Archive(object):
                     session.query(ArchivedItem.docid)
                     .filter(ArchivedItem.docid.in_(docids))
                     .all())
-                # For each deleted item, add to the list of results
+                # For each deleted (not moved) item, add to the list of results
                 # and remove from the set of containers to examine further.
                 for (container_id, docid) in deleted_rows:
                     if docid not in moved:
@@ -567,6 +570,109 @@ class Archive(object):
             reverse = next_reverse
 
         return res
+
+    def shred(self, docids=(), container_ids=()):
+        """Delete the specified objects and containers permanently.
+
+        The objects to shred must not exist in any container
+        (exempting the containers to be shredded) and the
+        containers must not contain any objects (exempting the
+        objects to be shredded). If these rules are not met, this
+        method will raise a ValueError.
+        """
+        session = self.session
+        conflicting_item = None
+
+        if docids:
+            # Verify none of the objects exist in any container
+            # (except the containers to be shredded.)
+            q = session.query(ArchivedItem).filter(
+                ArchivedItem.docid.in_(docids))
+            if container_ids:
+                q = q.filter(~ArchivedItem.container_id.in_(container_ids))
+            conflicting_item = q.order_by(ArchivedItem.docid).first()
+
+        if container_ids and conflicting_item is None:
+            # Verify none of the containers contain any objects
+            # (except the objects to be shredded.)
+            q = session.query(ArchivedItem).filter(
+                ArchivedItem.container_id.in_(container_ids))
+            if docids:
+                q = q.filter(~ArchivedItem.docid.in_(docids))
+            conflicting_item = q.order_by(ArchivedItem.container_id).first()
+
+        if conflicting_item is not None:
+            raise ValueError("Document %d is still in container %d" % (
+                conflicting_item.docid, conflicting_item.container_id))
+
+        # List the blob_ids referenced by the objects to shred.
+        # (Later, orphaned blobs will also be shredded.)
+        if docids:
+            blob_id_rows = (session.query(ArchivedBlobLink.blob_id)
+                .filter(ArchivedBlobLink.docid.in_(docids))
+                .all())
+            blob_ids = set(blob_id for (blob_id,) in blob_id_rows)
+        else:
+            blob_ids = None
+
+        if container_ids:
+            # Shred the specified containers.
+            # (Although we could rely on cascading, it seems useful to
+            # delete the rows explicitly to prevent accidents.)
+            log.warning("Shredding containers: %s", container_ids)
+            (session.query(ArchivedItem)
+                .filter(ArchivedItem.container_id.in_(container_ids))
+                .delete(False))
+            (session.query(ArchivedItemDeleted)
+                .filter(ArchivedItemDeleted.container_id.in_(container_ids))
+                .delete(False))
+            (session.query(ArchivedContainer)
+                .filter(ArchivedContainer.container_id.in_(container_ids))
+                .delete(False))
+
+        if docids:
+            # Shred the specified objects.
+            log.warning("Shredding objects: %s", container_ids)
+            (session.query(ArchivedItem)
+                .filter(ArchivedItem.docid.in_(docids))
+                .delete(False))
+            (session.query(ArchivedItemDeleted)
+                .filter(ArchivedItemDeleted.docid.in_(docids))
+                .delete(False))
+            (session.query(ArchivedCurrent)
+                .filter(ArchivedCurrent.docid.in_(docids))
+                .delete(False))
+            (session.query(ArchivedState)
+                .filter(ArchivedState.docid.in_(docids))
+                .delete(False))
+            (session.query(ArchivedBlobLink)
+                .filter(ArchivedBlobLink.docid.in_(docids))
+                .delete(False))
+            (session.query(ArchivedObject)
+                .filter(ArchivedObject.docid.in_(docids))
+                .delete(False))
+
+        if blob_ids:
+            keep_blob_rows = (session.query(ArchivedBlobLink.blob_id)
+                .filter(ArchivedBlobLink.blob_id.in_(blob_ids))
+                .all())
+            keep_blob_ids = set(blob_id for (blob_id,) in keep_blob_rows)
+            orphaned_blob_ids = blob_ids.difference(keep_blob_ids)
+
+            if orphaned_blob_ids:
+                # Shred the orphaned blobs.
+                log.warning("Shredding orphaned blobs: %s", orphaned_blob_ids)
+                (session.query(ArchivedChunk)
+                    .filter(ArchivedChunk.blob_id.in_(orphaned_blob_ids))
+                    .delete(False))
+                (session.query(ArchivedBlobInfo)
+                    .filter(ArchivedBlobInfo.blob_id.in_(orphaned_blob_ids))
+                    .delete(False))
+
+        # Above, we use delete(False) for speed. According to the
+        # SQLAlchemy docs, we should call expire_all() after
+        # using delete(False).
+        session.expire_all()
 
 
 class ObjectHistoryRecord(object):

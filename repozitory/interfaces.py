@@ -136,7 +136,7 @@ class IArchive(Interface):
         Returns a sequence containing a subset of the provided container_ids.
         """
 
-    def which_contain_deleted(self, container_ids, max_depth=None):
+    def which_contain_deleted(container_ids, max_depth=None):
         """Returns the subset of container_ids that have had something deleted.
 
         This is useful for building a hierarchical trash UI that allows
@@ -148,6 +148,18 @@ class IArchive(Interface):
 
         NB: This method assumes that container_ids are also docids.
         (Most other methods make no such assumption.)
+        """
+
+    def shred(docids=(), container_ids=()):
+        """Delete the specified objects and containers permanently.
+
+        The objects to shred must not exist in any container
+        (exempting the containers to be shredded) and the
+        containers must not contain any objects (exempting the
+        objects to be shredded). If these rules are not met, this
+        method will raise a ValueError.
+
+        Returns None.
         """
 
 

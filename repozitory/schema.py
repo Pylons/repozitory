@@ -116,7 +116,7 @@ class ArchivedBlobLink(Base):
     version_num = Column(Integer, primary_key=True, nullable=False)
     name = Column(Unicode, primary_key=True, nullable=False)
     blob_id = Column(Integer, ForeignKey('archived_blob_info.blob_id'),
-        nullable=True)
+        nullable=True, index=True)
 
     __table_args__ = (
         ForeignKeyConstraint(
