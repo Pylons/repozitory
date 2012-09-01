@@ -1,5 +1,6 @@
 
 from cStringIO import StringIO
+from perfmetrics import metricmethod
 from repozitory.interfaces import IArchive
 from repozitory.interfaces import IContainerRecord
 from repozitory.interfaces import IDeletedItem
@@ -90,6 +91,7 @@ class Archive(object):
         session.configure(bind=engine)
         return session
 
+    @metricmethod
     def archive(self, obj):
         """Add a version to the archive of an object.
 
@@ -261,6 +263,7 @@ class Archive(object):
         session.flush()
         return arc_blob.blob_id
 
+    @metricmethod
     def history(self, docid, only_current=False):
         """Get the history of an object.
 
@@ -280,6 +283,7 @@ class Archive(object):
         return [ObjectHistoryRecord(row, created, current_version)
             for row in rows]
 
+    @metricmethod
     def get_version(self, docid, version_num):
         """Return a specific IObjectHistoryRecord for an object.
         """
@@ -294,6 +298,7 @@ class Archive(object):
             .one())
         return ObjectHistoryRecord(row, created, current_version)
 
+    @metricmethod
     def reverted(self, docid, version_num):
         """Tell the database that an object has been reverted."""
         session = self.session
@@ -301,6 +306,7 @@ class Archive(object):
         row.version_num = version_num
         session.flush()
 
+    @metricmethod
     def archive_container(self, container, user):
         """Update the archive of a container.
 
@@ -400,6 +406,7 @@ class Archive(object):
             )
             session.add(row)
 
+    @metricmethod
     def container_contents(self, container_id):
         """Return the contents of a container as IContainerRecord.
         """
@@ -409,6 +416,7 @@ class Archive(object):
             .one())
         return ContainerRecord(self, session, row)
 
+    @metricmethod
     def iter_hierarchy(self, top_container_id, max_depth=None,
             follow_deleted=False, follow_moved=False):
         """Iterate over IContainerRecords in a hierarchy.
@@ -491,6 +499,7 @@ class Archive(object):
                             seen.add(docid)
                             to_examine.append(docid)
 
+    @metricmethod
     def filter_container_ids(self, container_ids):
         """Return which of the specified container IDs exist in the archive.
         """
@@ -502,6 +511,7 @@ class Archive(object):
             .all())
         return [container_id for (container_id,) in rows]
 
+    @metricmethod
     def which_contain_deleted(self, container_ids, max_depth=None):
         """Return the subset of container_ids that have something deleted.
         """
@@ -573,6 +583,7 @@ class Archive(object):
 
         return res
 
+    @metricmethod
     def shred(self, docids=(), container_ids=()):
         """Delete the specified objects and containers permanently.
 

@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 import os
 
-version = '1.2'
+version = '1.3'
 
 here = os.path.abspath(os.path.dirname(__file__))
 README = open(os.path.join(here, 'README.txt')).read()
@@ -13,7 +13,7 @@ setup(
     version=version,
     description="Simple document versioning for web apps, "
         "especially Pyramid apps.",
-    long_description=README + '\n\nChanges\n=======\n\n' + CHANGES,
+    long_description=README + '\n\n' + CHANGES,
     # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[],
     keywords='pyramid pylons document version versioning sql sqlalchemy',
@@ -25,6 +25,7 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
+        'perfmetrics',
         'psycopg2',
         'simplejson',
         'SQLAlchemy>=0.7.1',
